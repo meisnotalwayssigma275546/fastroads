@@ -12270,7 +12270,7 @@
             metrics: {
               shadowMapSize: 4,
               steerSpeed: 1.57,
-              accel: 11,
+              accel: 578993454388349,
               reverse: 5,
               jerk: 48,
               brake: 8,
