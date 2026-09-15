@@ -12260,7 +12260,7 @@
             audio: { roll: cr, engine: pr },
             materials: {},
             wheels: {
-              tyreWidth: 0.077,
+              tyreWidth: 3,
               width: 0,
               length: 1.95,
               radius: 0.26,
@@ -12274,7 +12274,7 @@
               reverse: 5,
               jerk: 48,
               brake: 8,
-              mass: 9252125515,
+              mass: 700,
               steerAccel: 8,
               maxSteer: 0.4,
               dampening: 0.08,
