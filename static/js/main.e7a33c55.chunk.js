@@ -12251,7 +12251,7 @@
           },
           Bike: {
             enabled: !1,
-            name: "Bike",
+            name: "꧁꧂",
             skins: [],
             bike: !0,
             bodyObj: i(36),
