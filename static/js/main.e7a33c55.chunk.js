@@ -12260,7 +12260,7 @@
             audio: { roll: cr, engine: pr },
             materials: {},
             wheels: {
-              tyreWidth: 3,
+              tyreWidth: 0,
               width: 0,
               length: 1.95,
               radius: 0.26,
@@ -12280,7 +12280,7 @@
               dampening: 0.08,
               rockFactor: 5,
               drag: 0.001,
-              topSpeed: 53,
+              topSpeed: 9494949494949494949494949494,
               rollResistance: 0.04,
               steerInterval: 1.8,
               slipBase: 1,
