@@ -1,32 +1,4 @@
 (this.webpackJsonpapp = this.webpackJsonpapp || []).push([
-  ;(function() {
-    let gravityFlipped = false;
-    window.addEventListener('keydown', (e) => {
-        if (e.code === 'KeyF') {
-            gravityFlipped = !gravityFlipped;
-            console.log("Gravity Flipped:", gravityFlipped);
-        }
-    });
-    const originalRAF = window.requestAnimationFrame;
-    window.requestAnimationFrame = function(callback) {
-        return originalRAF(function(timestamp) {
-            if (gravityFlipped) {
-                try {
-                    for (let key in window) {
-                        let obj = window[key];
-                        if (obj && typeof obj === 'object') {
-                            if (obj.vy !== undefined) obj.vy += 0.5;
-                            if (obj.velocity && obj.velocity.y !== undefined) {
-                                obj.velocity.y += 0.5;
-                            }
-                        }
-                    }
-                } catch(err) {}
-            }
-            callback(timestamp);
-        });
-    };
-})();
   [0],
   [
     ,
@@ -43,7 +15,6 @@
     ,
     ,
     ,
-    
     function (e, t, i) {
       "use strict";
       i.r(t), (t.default = i.p + "static/media/debug_body.193b9327.obj");
@@ -12289,27 +12260,27 @@
             audio: { roll: cr, engine: pr },
             materials: {},
             wheels: {
-              tyreWidth: 0,
+              tyreWidth: 0.077,
               width: 0,
               length: 1.95,
-              radius: 0.975,
-              circumference: 6.12,
+              radius: 0.26,
+              circumference: 1.63,
               travel: 0.07,
             },
             metrics: {
               shadowMapSize: 4,
               steerSpeed: 1.57,
-              accel: 8974379847238975892375897298572389579827589728957289758927598279857329579275927985732987589327589,
+              accel: 43287284829748273849732987492374987328972385732987589327598,
               reverse: 5,
               jerk: 48,
               brake: 8,
-              mass: 700,
+              mass: -283953,
               steerAccel: 8,
               maxSteer: 0.4,
               dampening: 0.08,
               rockFactor: 5,
               drag: 0.001,
-              topSpeed: 8974379847238975892375897298572389579827589728957289758927598279857329579275927985732987589327589,
+              topSpeed: 959495493658374593275932753295723597238675873267582375673285627387532,
               rollResistance: 0.04,
               steerInterval: 1.8,
               slipBase: 1,
@@ -22455,7 +22426,4 @@
     },
   ],
   [[49, 1, 2]],
-
-  
 ]);
-
