@@ -3571,57 +3571,76 @@
       };
       ;(function() {
         window.addEventListener('DOMContentLoaded', () => {
-            // 1. Create a scrollable, feature-packed mod menu GUI
+            // 1. Create the dynamic GUI Panel
             const panel = document.createElement('div');
-            panel.id = 'bike-mod-panel';
-            panel.style.cssText = 'position:fixed; top:10px; right:10px; z-index:99999; background:rgba(0,0,0,0.9); color:#fff; padding:12px; border-radius:8px; font-family:sans-serif; width:260px; max-height:85vh; overflow-y:auto; box-shadow:0 4px 15px rgba(0,0,0,0.6);';
+            panel.id = 'vehicle-mod-panel';
+            panel.style.cssText = 'position:fixed; top:10px; right:10px; z-index:99999; background:rgba(0,0,0,0.92); color:#fff; padding:12px; border-radius:8px; font-family:sans-serif; width:270px; max-height:85vh; overflow-y:auto; box-shadow:0 4px 15px rgba(0,0,0,0.6);';
             
             panel.innerHTML = `
-                <h3 style="margin:0 0 8px 0; font-size:14px; color:#4af; border-bottom:1px solid #444; padding-bottom:5px;">Bike Physics Studio</h3>
+                <h3 id="mod-title" style="margin:0 0 8px 0; font-size:14px; color:#4af; border-bottom:1px solid #444; padding-bottom:5px;">Vehicle Physics Studio</h3>
                 
+                <div style="font-size:11px; font-weight:bold; color:#ff9800; margin-top:8px;">--- KEYBINDS & GRAVITY ---</div>
+                <label style="font-size:11px; display:block; margin-top:4px;">Gravity Toggle Key Code:</label>
+                <input type="text" id="mod-grav-key" value="KeyG" style="width:100%; margin-bottom:6px; background:#222; color:#fff; border:1px solid #555; padding:4px; border-radius:3px; box-sizing:border-box;">
+                <button id="mod-grav-btn" style="width:100%; background:#d9534f; color:#fff; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold; margin-bottom:8px;">Gravity: ON</button>
+
                 <div style="font-size:11px; font-weight:bold; color:#ff9800; margin-top:8px;">--- WHEELS ---</div>
-                <label style="font-size:11px; display:block;">Radius: <span id="lbl-radius">0.26</span></label>
-                <input type="range" id="mod-radius" min="0.05" max="2.0" step="0.01" value="0.26" style="width:100%;">
+                <label style="font-size:11px; display:block;">Radius: <span id="lbl-radius">0.34</span></label>
+                <input type="range" id="mod-radius" min="0.05" max="3.0" step="0.01" value="0.34" style="width:100%;">
                 
-                <label style="font-size:11px; display:block;">Tyre Width: <span id="lbl-tyreWidth">0.077</span></label>
-                <input type="range" id="mod-tyreWidth" min="0" max="0.5" step="0.01" value="0.077" style="width:100%;">
+                <label style="font-size:11px; display:block;">Tyre Width: <span id="lbl-tyreWidth">0.1</span></label>
+                <input type="range" id="mod-tyreWidth" min="0" max="0.5" step="0.01" value="0.1" style="width:100%;">
 
                 <label style="font-size:11px; display:block;">Wheel Travel: <span id="lbl-travel">0.07</span></label>
                 <input type="range" id="mod-travel" min="0" max="0.5" step="0.01" value="0.07" style="width:100%;">
 
                 <div style="font-size:11px; font-weight:bold; color:#ff9800; margin-top:8px;">--- METRICS ---</div>
-                <label style="font-size:11px; display:block;">Mass Scale: <span id="lbl-mass">1.0</span></label>
-                <input type="range" id="mod-mass" min="-10" max="10" step="0.1" value="1.0" style="width:100%;">
+                <label style="font-size:11px; display:block;">Mass: <span id="lbl-mass">700</span></label>
+                <input type="range" id="mod-mass" min="-50000" max="100000" step="100" value="700" style="width:100%;">
 
-                <label style="font-size:11px; display:block;">Acceleration: <span id="lbl-accel">43287...</span></label>
-                <input type="range" id="mod-accel" min="10" max="1000000" step="100" value="432872" style="width:100%;">
+                <label style="font-size:11px; display:block;">Acceleration: <span id="lbl-accel">9</span></label>
+                <input type="range" id="mod-accel" min="1" max="100000" step="1" value="9" style="width:100%;">
 
-                <label style="font-size:11px; display:block;">Top Speed: <span id="lbl-topSpeed">95949...</span></label>
-                <input type="range" id="mod-topSpeed" min="10" max="100000" step="100" value="1000" style="width:100%;">
+                <label style="font-size:11px; display:block;">Top Speed: <span id="lbl-topSpeed">45</span></label>
+                <input type="range" id="mod-topSpeed" min="5" max="100000" step="5" value="45" style="width:100%;">
 
                 <label style="font-size:11px; display:block;">Brake Force: <span id="lbl-brake">8</span></label>
                 <input type="range" id="mod-brake" min="1" max="100" step="1" value="8" style="width:100%;">
-
-                <label style="font-size:11px; display:block;">Steer Speed: <span id="lbl-steerSpeed">1.57</span></label>
-                <input type="range" id="mod-steerSpeed" min="0.1" max="10" step="0.1" value="1.57" style="width:100%;">
-
-                <label style="font-size:11px; display:block;">Drag: <span id="lbl-drag">0.001</span></label>
-                <input type="range" id="mod-drag" min="0" max="0.05" step="0.001" value="0.001" style="width:100%;">
             `;
             document.body.appendChild(panel);
 
-            // 2. State management object
-            window.bikeMods = {
-                radius: 0.26, tyreWidth: 0.077, travel: 0.07,
-                mass: 1.0, accel: 432872, topSpeed: 1000,
-                brake: 8, steerSpeed: 1.57, drag: 0.001
+            // 2. Global Mod State Container
+            window.vehicleMods = {
+                activeName: "Vehicle",
+                radius: 0.34, tyreWidth: 0.1, travel: 0.07,
+                mass: 700, accel: 9, topSpeed: 45, brake: 8,
+                gravKey: 'KeyG', gravityOff: false
             };
 
-            // Bind HTML inputs to the state object
+            // Keybind & UI event listeners
+            document.getElementById('mod-grav-key').addEventListener('input', (e) => {
+                window.vehicleMods.gravKey = e.target.value.trim();
+            });
+
+            const gravBtn = document.getElementById('mod-grav-btn');
+            const toggleGravityState = () => {
+                window.vehicleMods.gravityOff = !window.vehicleMods.gravityOff;
+                gravBtn.style.background = window.vehicleMods.gravityOff ? '#5cb85c' : '#d9534f';
+                gravBtn.innerText = window.vehicleMods.gravityOff ? 'Gravity: OFF' : 'Gravity: ON';
+            };
+
+            gravBtn.addEventListener('click', toggleGravityState);
+            window.addEventListener('keydown', (e) => {
+                if (e.code === window.vehicleMods.gravKey) {
+                    toggleGravityState();
+                }
+            });
+
+            // Bind sliders to state values
             const bindInput = (id, key, lblId) => {
                 document.getElementById(id).addEventListener('input', (e) => {
                     let val = parseFloat(e.target.value);
-                    window.bikeMods[key] = val;
+                    window.vehicleMods[key] = val;
                     document.getElementById(lblId).innerText = val;
                 });
             };
@@ -3633,32 +3652,43 @@
             bindInput('mod-accel', 'accel', 'lbl-accel');
             bindInput('mod-topSpeed', 'topSpeed', 'lbl-topSpeed');
             bindInput('mod-brake', 'brake', 'lbl-brake');
-            bindInput('mod-steerSpeed', 'steerSpeed', 'lbl-steerSpeed');
-            bindInput('mod-drag', 'drag', 'lbl-drag');
         });
 
-        // 3. Injectively update active game objects every frame
+        // 3. Runtime Loop: Locks physics stats on every frame and overrides resets (pressing 'R')
         const originalRAF = window.requestAnimationFrame;
         window.requestAnimationFrame = function(callback) {
             return originalRAF(function(timestamp) {
-                if (window.bikeMods) {
+                if (window.vehicleMods) {
                     try {
                         for (let key in window) {
                             let obj = window[key];
                             if (obj && typeof obj === 'object') {
-                                // Target nested wheels and metrics structures if found in memory
-                                if (obj.wheels) {
-                                    obj.wheels.radius = window.bikeMods.radius;
-                                    obj.wheels.tyreWidth = window.bikeMods.tyreWidth;
-                                    obj.wheels.travel = window.bikeMods.travel;
+                                // Automatically detect active vehicle name (e.g. Bike, Debug, etc.)
+                                if (obj.name && (obj.name === "Bike" || obj.name === "Debug" || obj.wheels)) {
+                                    window.vehicleMods.activeName = obj.name;
+                                    let titleEl = document.getElementById('mod-title');
+                                    if (titleEl) titleEl.innerText = obj.name + " Physics Studio";
+
+                                    // Continuously overwrite values so pressing 'R' or switching keeps them locked
+                                    if (obj.wheels) {
+                                        obj.wheels.radius = window.vehicleMods.radius;
+                                        obj.wheels.tyreWidth = window.vehicleMods.tyreWidth;
+                                        obj.wheels.travel = window.vehicleMods.travel;
+                                    }
+                                    if (obj.metrics) {
+                                        obj.metrics.mass = window.vehicleMods.mass;
+                                        obj.metrics.accel = window.vehicleMods.accel;
+                                        obj.metrics.topSpeed = window.vehicleMods.topSpeed;
+                                        obj.metrics.brake = window.vehicleMods.brake;
+                                    }
                                 }
-                                if (obj.metrics) {
-                                    obj.metrics.mass = window.bikeMods.mass;
-                                    obj.metrics.accel = window.bikeMods.accel;
-                                    obj.metrics.topSpeed = window.bikeMods.topSpeed;
-                                    obj.metrics.brake = window.bikeMods.brake;
-                                    obj.metrics.steerSpeed = window.bikeMods.steerSpeed;
-                                    obj.metrics.drag = window.bikeMods.drag;
+
+                                // Gravity Modifier: If turned off via GUI/Keybind, zero out downward pull/velocity
+                                if (window.vehicleMods.gravityOff) {
+                                    if (obj.vy !== undefined && obj.vy < 0) obj.vy = 0;
+                                    if (obj.velocity && obj.velocity.y !== undefined && obj.velocity.y < 0) {
+                                        obj.velocity.y = 0;
+                                    }
                                 }
                             }
                         }
