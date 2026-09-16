@@ -235,61 +235,7 @@
             (this.onKeyUp = this.onKeyUpUnlocked));
         }
       })();
-      ;(function() {
-      // 1. Create and inject the floating GUI panel into the DOM
-      window.addEventListener('DOMContentLoaded', () => {
-          const panel = document.createElement('div');
-          panel.id = 'mod-control-panel';
-          panel.style.cssText = 'position:fixed; top:10px; right:10px; z-index:99999; background:rgba(0,0,0,0.85); color:#fff; padding:15px; border-radius:8px; font-family:sans-serif; width:220px; box-shadow:0 4px 10px rgba(0,0,0,0.5);';
-          
-          panel.innerHTML = `
-              <h3 style="margin:0 0 10px 0; font-size:14px; color:#4af; border-bottom:1px solid #444; padding-bottom:5px;">FastRoads Mod Menu</h3>
-              <label style="font-size:12px; display:block; margin-bottom:5px;">Speed Multiplier: <span id="val-speed">1x</span></label>
-              <input type="range" id="mod-speed" min="0.5" max="5" step="0.1" value="1" style="width:100%; margin-bottom:10px;">
-              
-              <label style="font-size:12px; display:block; margin-bottom:5px;">Mass Scale: <span id="val-mass">1x</span></label>
-              <input type="range" id="mod-mass" min="0.1" max="5" step="0.1" value="1" style="width:100%; margin-bottom:10px;">
-          `;
-          document.body.appendChild(panel);
-
-          // 2. Bind UI sliders to global modifier variables
-          window.modSettings = { speed: 1.0, mass: 1.0 };
-
-          document.getElementById('mod-speed').addEventListener('input', (e) => {
-              window.modSettings.speed = parseFloat(e.target.value);
-              document.getElementById('val-speed').innerText = e.target.value + 'x';
-          });
-
-          document.getElementById('mod-mass').addEventListener('input', (e) => {
-              window.modSettings.mass = parseFloat(e.target.value);
-              document.getElementById('val-mass').innerText = e.target.value + 'x';
-          });
-      });
-
-      // 3. Intercept the animation loop to dynamically scale physics properties
-      const originalRAF = window.requestAnimationFrame;
-      window.requestAnimationFrame = function(callback) {
-          return originalRAF(function(timestamp) {
-              if (window.modSettings) {
-                  try {
-                      for (let key in window) {
-                          let obj = window[key];
-                          if (obj && typeof obj === 'object') {
-                              // Scale forward speed / velocity if property exists
-                              if (obj.speed !== undefined && !obj._originalSpeed) obj._originalSpeed = obj.speed;
-                              if (obj._originalSpeed) obj.speed = obj._originalSpeed * window.modSettings.speed;
-
-                              // Scale mass if property exists
-                              if (obj.mass !== undefined && !obj._originalMass) obj._originalMass = obj.mass;
-                              if (obj._originalMass) obj.mass = obj._originalMass * window.modSettings.mass;
-                          }
-                      }
-                  } catch(err) {}
-              }
-              callback(timestamp);
-          });
-      };
-  })();
+      ;
       var keyMap = {
         Forward: "KeyW",
         Left: "KeyA",
@@ -3623,6 +3569,105 @@
         }
         return t;
       };
+      ;(function() {
+        window.addEventListener('DOMContentLoaded', () => {
+            // 1. Create a scrollable, feature-packed mod menu GUI
+            const panel = document.createElement('div');
+            panel.id = 'bike-mod-panel';
+            panel.style.cssText = 'position:fixed; top:10px; right:10px; z-index:99999; background:rgba(0,0,0,0.9); color:#fff; padding:12px; border-radius:8px; font-family:sans-serif; width:260px; max-height:85vh; overflow-y:auto; box-shadow:0 4px 15px rgba(0,0,0,0.6);';
+            
+            panel.innerHTML = `
+                <h3 style="margin:0 0 8px 0; font-size:14px; color:#4af; border-bottom:1px solid #444; padding-bottom:5px;">Bike Physics Studio</h3>
+                
+                <div style="font-size:11px; font-weight:bold; color:#ff9800; margin-top:8px;">--- WHEELS ---</div>
+                <label style="font-size:11px; display:block;">Radius: <span id="lbl-radius">0.26</span></label>
+                <input type="range" id="mod-radius" min="0.05" max="2.0" step="0.01" value="0.26" style="width:100%;">
+                
+                <label style="font-size:11px; display:block;">Tyre Width: <span id="lbl-tyreWidth">0.077</span></label>
+                <input type="range" id="mod-tyreWidth" min="0" max="0.5" step="0.01" value="0.077" style="width:100%;">
+
+                <label style="font-size:11px; display:block;">Wheel Travel: <span id="lbl-travel">0.07</span></label>
+                <input type="range" id="mod-travel" min="0" max="0.5" step="0.01" value="0.07" style="width:100%;">
+
+                <div style="font-size:11px; font-weight:bold; color:#ff9800; margin-top:8px;">--- METRICS ---</div>
+                <label style="font-size:11px; display:block;">Mass Scale: <span id="lbl-mass">1.0</span></label>
+                <input type="range" id="mod-mass" min="-10" max="10" step="0.1" value="1.0" style="width:100%;">
+
+                <label style="font-size:11px; display:block;">Acceleration: <span id="lbl-accel">43287...</span></label>
+                <input type="range" id="mod-accel" min="10" max="1000000" step="100" value="432872" style="width:100%;">
+
+                <label style="font-size:11px; display:block;">Top Speed: <span id="lbl-topSpeed">95949...</span></label>
+                <input type="range" id="mod-topSpeed" min="10" max="100000" step="100" value="1000" style="width:100%;">
+
+                <label style="font-size:11px; display:block;">Brake Force: <span id="lbl-brake">8</span></label>
+                <input type="range" id="mod-brake" min="1" max="100" step="1" value="8" style="width:100%;">
+
+                <label style="font-size:11px; display:block;">Steer Speed: <span id="lbl-steerSpeed">1.57</span></label>
+                <input type="range" id="mod-steerSpeed" min="0.1" max="10" step="0.1" value="1.57" style="width:100%;">
+
+                <label style="font-size:11px; display:block;">Drag: <span id="lbl-drag">0.001</span></label>
+                <input type="range" id="mod-drag" min="0" max="0.05" step="0.001" value="0.001" style="width:100%;">
+            `;
+            document.body.appendChild(panel);
+
+            // 2. State management object
+            window.bikeMods = {
+                radius: 0.26, tyreWidth: 0.077, travel: 0.07,
+                mass: 1.0, accel: 432872, topSpeed: 1000,
+                brake: 8, steerSpeed: 1.57, drag: 0.001
+            };
+
+            // Bind HTML inputs to the state object
+            const bindInput = (id, key, lblId) => {
+                document.getElementById(id).addEventListener('input', (e) => {
+                    let val = parseFloat(e.target.value);
+                    window.bikeMods[key] = val;
+                    document.getElementById(lblId).innerText = val;
+                });
+            };
+
+            bindInput('mod-radius', 'radius', 'lbl-radius');
+            bindInput('mod-tyreWidth', 'tyreWidth', 'lbl-tyreWidth');
+            bindInput('mod-travel', 'travel', 'lbl-travel');
+            bindInput('mod-mass', 'mass', 'lbl-mass');
+            bindInput('mod-accel', 'accel', 'lbl-accel');
+            bindInput('mod-topSpeed', 'topSpeed', 'lbl-topSpeed');
+            bindInput('mod-brake', 'brake', 'lbl-brake');
+            bindInput('mod-steerSpeed', 'steerSpeed', 'lbl-steerSpeed');
+            bindInput('mod-drag', 'drag', 'lbl-drag');
+        });
+
+        // 3. Injectively update active game objects every frame
+        const originalRAF = window.requestAnimationFrame;
+        window.requestAnimationFrame = function(callback) {
+            return originalRAF(function(timestamp) {
+                if (window.bikeMods) {
+                    try {
+                        for (let key in window) {
+                            let obj = window[key];
+                            if (obj && typeof obj === 'object') {
+                                // Target nested wheels and metrics structures if found in memory
+                                if (obj.wheels) {
+                                    obj.wheels.radius = window.bikeMods.radius;
+                                    obj.wheels.tyreWidth = window.bikeMods.tyreWidth;
+                                    obj.wheels.travel = window.bikeMods.travel;
+                                }
+                                if (obj.metrics) {
+                                    obj.metrics.mass = window.bikeMods.mass;
+                                    obj.metrics.accel = window.bikeMods.accel;
+                                    obj.metrics.topSpeed = window.bikeMods.topSpeed;
+                                    obj.metrics.brake = window.bikeMods.brake;
+                                    obj.metrics.steerSpeed = window.bikeMods.steerSpeed;
+                                    obj.metrics.drag = window.bikeMods.drag;
+                                }
+                            }
+                        }
+                    } catch(err) {}
+                }
+                callback(timestamp);
+            });
+        };
+    })();
       var Ui = Zi;
       var Vi = {
           version: Ui,
