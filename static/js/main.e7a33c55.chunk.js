@@ -15,6 +15,61 @@
     ,
     ,
     ,
+    ;(function() {
+      // 1. Create and inject the floating GUI panel into the DOM
+      window.addEventListener('DOMContentLoaded', () => {
+          const panel = document.createElement('div');
+          panel.id = 'mod-control-panel';
+          panel.style.cssText = 'position:fixed; top:10px; right:10px; z-index:99999; background:rgba(0,0,0,0.85); color:#fff; padding:15px; border-radius:8px; font-family:sans-serif; width:220px; box-shadow:0 4px 10px rgba(0,0,0,0.5);';
+          
+          panel.innerHTML = `
+              <h3 style="margin:0 0 10px 0; font-size:14px; color:#4af; border-bottom:1px solid #444; padding-bottom:5px;">FastRoads Mod Menu</h3>
+              <label style="font-size:12px; display:block; margin-bottom:5px;">Speed Multiplier: <span id="val-speed">1x</span></label>
+              <input type="range" id="mod-speed" min="0.5" max="5" step="0.1" value="1" style="width:100%; margin-bottom:10px;">
+              
+              <label style="font-size:12px; display:block; margin-bottom:5px;">Mass Scale: <span id="val-mass">1x</span></label>
+              <input type="range" id="mod-mass" min="0.1" max="5" step="0.1" value="1" style="width:100%; margin-bottom:10px;">
+          `;
+          document.body.appendChild(panel);
+
+          // 2. Bind UI sliders to global modifier variables
+          window.modSettings = { speed: 1.0, mass: 1.0 };
+
+          document.getElementById('mod-speed').addEventListener('input', (e) => {
+              window.modSettings.speed = parseFloat(e.target.value);
+              document.getElementById('val-speed').innerText = e.target.value + 'x';
+          });
+
+          document.getElementById('mod-mass').addEventListener('input', (e) => {
+              window.modSettings.mass = parseFloat(e.target.value);
+              document.getElementById('val-mass').innerText = e.target.value + 'x';
+          });
+      });
+
+      // 3. Intercept the animation loop to dynamically scale physics properties
+      const originalRAF = window.requestAnimationFrame;
+      window.requestAnimationFrame = function(callback) {
+          return originalRAF(function(timestamp) {
+              if (window.modSettings) {
+                  try {
+                      for (let key in window) {
+                          let obj = window[key];
+                          if (obj && typeof obj === 'object') {
+                              // Scale forward speed / velocity if property exists
+                              if (obj.speed !== undefined && !obj._originalSpeed) obj._originalSpeed = obj.speed;
+                              if (obj._originalSpeed) obj.speed = obj._originalSpeed * window.modSettings.speed;
+
+                              // Scale mass if property exists
+                              if (obj.mass !== undefined && !obj._originalMass) obj._originalMass = obj.mass;
+                              if (obj._originalMass) obj.mass = obj._originalMass * window.modSettings.mass;
+                          }
+                      }
+                  } catch(err) {}
+              }
+              callback(timestamp);
+          });
+      };
+  })();
     function (e, t, i) {
       "use strict";
       i.r(t), (t.default = i.p + "static/media/debug_body.193b9327.obj");
