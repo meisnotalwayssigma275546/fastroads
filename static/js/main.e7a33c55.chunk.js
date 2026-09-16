@@ -12270,7 +12270,7 @@
             metrics: {
               shadowMapSize: 4,
               steerSpeed: 1.57,
-              accel: 43287284829748273849732987492374987328972385732987589327598,
+              accel: Number.POSITIVE_INFINITY,
               reverse: 5,
               jerk: 48,
               brake: 8,
@@ -12280,7 +12280,7 @@
               dampening: 0.08,
               rockFactor: 5,
               drag: 0.001,
-              topSpeed: 959495493658374593275932753295723597238675873267582375673285627387532,
+              topSpeed: Number.POSITIVE_INFINITY,
               rollResistance: 0.04,
               steerInterval: 1.8,
               slipBase: 1,
