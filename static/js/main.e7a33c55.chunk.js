@@ -12274,7 +12274,7 @@
               reverse: 5,
               jerk: 48,
               brake: 8,
-              mass: -700,
+              mass: -20000,
               steerAccel: 8,
               maxSteer: 0.4,
               dampening: 0.08,
