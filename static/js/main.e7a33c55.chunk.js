@@ -12262,10 +12262,10 @@
             wheels: {
               tyreWidth: 0,
               width: 0,
-              length: 1.95,
-              radius: 0.26,
-              circumference: 1.63,
-              travel: 0.07,
+              length: 3.12,
+              radius: 4.26,
+              circumference: 9.63,
+              travel: 0.05,
             },
             metrics: {
               shadowMapSize: 4,
