@@ -12260,13 +12260,13 @@
             audio: { roll: cr, engine: pr },
             materials: {},
             wheels: {
-            tyreWidth: 0,
-            width: 0,
-            length: 1.95,
-            radius: 0.975, 
-            circumference: 6.12, 
-            travel: 0.07,
-          }
+              tyreWidth: 0,
+              width: 0,
+              length: 1.95,
+              radius: 0.975,
+              circumference: 6.12,
+              travel: 0.07,
+            },
             metrics: {
               shadowMapSize: 4,
               steerSpeed: 1.57,
