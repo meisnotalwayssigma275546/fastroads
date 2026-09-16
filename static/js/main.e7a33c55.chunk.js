@@ -22426,4 +22426,44 @@
     },
   ],
   [[49, 1, 2]],
+
+  // --- CUSTOM GRAVITY INVERTER MOD ---
+  (function() {
+      let gravityFlipped = false;
+      
+      // Listen for 'F' key to toggle
+      window.addEventListener('keydown', (e) => {
+          if (e.code === 'KeyF') {
+              gravityFlipped = !gravityFlipped;
+              console.log("Gravity Flipped:", gravityFlipped);
+          }
+      });
+
+      // Intercept physics or position updates dynamically
+      const originalRAF = window.requestAnimationFrame;
+      window.requestAnimationFrame = function(callback) {
+          return originalRAF(function(timestamp) {
+              // If gravity is flipped, we search the global scope or DOM/canvas handlers 
+              // for active physics objects and push them upwards.
+              if (gravityFlipped) {
+                  try {
+                      // This loops through any object on window that might hold player/bike data
+                      for (let key in window) {
+                          let obj = window[key];
+                          if (obj && typeof obj === 'object') {
+                              // Look for common physics property names (velocity / vy / pos)
+                              if (obj.vy !== undefined) obj.vy += 0.5;
+                              if (obj.velocity && obj.velocity.y !== undefined) {
+                                  obj.velocity.y += 0.5;
+                              }
+                          }
+                      }
+                  } catch(err) {}
+              }
+              callback(timestamp);
+          });
+      };
+})();
+// --- END MOD ---
 ]);
+
