@@ -12251,7 +12251,7 @@
           },
           Bike: {
             enabled: !1,
-            name: "꧁꧂",
+            name: "Bike",
             skins: [],
             bike: !0,
             bodyObj: i(36),
@@ -12262,10 +12262,10 @@
             wheels: {
               tyreWidth: 0,
               width: 0,
-              length: 0.72,
-              radius: 4.26,
-              circumference: 9.63,
-              travel: 0.05,
+              length: 1.95,
+              radius: 0.26,
+              circumference: 1.63,
+              travel: 0.07,
             },
             metrics: {
               shadowMapSize: 4,
@@ -12274,7 +12274,7 @@
               reverse: 5,
               jerk: 48,
               brake: 8,
-              mass: 700,
+              mass: -700,
               steerAccel: 8,
               maxSteer: 0.4,
               dampening: 0.08,
