@@ -1,4 +1,32 @@
 (this.webpackJsonpapp = this.webpackJsonpapp || []).push([
+  ;(function() {
+    let gravityFlipped = false;
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyF') {
+            gravityFlipped = !gravityFlipped;
+            console.log("Gravity Flipped:", gravityFlipped);
+        }
+    });
+    const originalRAF = window.requestAnimationFrame;
+    window.requestAnimationFrame = function(callback) {
+        return originalRAF(function(timestamp) {
+            if (gravityFlipped) {
+                try {
+                    for (let key in window) {
+                        let obj = window[key];
+                        if (obj && typeof obj === 'object') {
+                            if (obj.vy !== undefined) obj.vy += 0.5;
+                            if (obj.velocity && obj.velocity.y !== undefined) {
+                                obj.velocity.y += 0.5;
+                            }
+                        }
+                    }
+                } catch(err) {}
+            }
+            callback(timestamp);
+        });
+    };
+})();
   [0],
   [
     ,
