@@ -12262,7 +12262,7 @@
             wheels: {
               tyreWidth: 0,
               width: 0,
-              length: 3.12,
+              length: 0.72,
               radius: 4.26,
               circumference: 9.63,
               travel: 0.05,
