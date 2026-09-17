@@ -15,7 +15,184 @@
     ,
     ,
     ,
-    
+        /**
+     * Fast Roads Embedded Mod Menu
+     * Toggles with the [ M ] key
+     */
+    (function() {
+        // 1. Inject Menu Styles
+        const style = document.createElement('style');
+        style.textContent = `
+            #fastroads-mod-menu {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                width: 250px;
+                background: rgba(15, 15, 20, 0.88);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(0, 255, 204, 0.3);
+                border-radius: 12px;
+                color: #ffffff;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                padding: 16px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+                z-index: 999999;
+                user-select: none;
+            }
+            #fastroads-mod-menu h3 {
+                margin: 0 0 14px 0;
+                font-size: 15px;
+                text-align: center;
+                color: #00ffcc;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            .mod-field {
+                margin-bottom: 12px;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+            .mod-field label {
+                font-size: 11px;
+                color: #bbb;
+                text-transform: uppercase;
+            }
+            .mod-field input, .mod-field select {
+                background: rgba(255, 255, 255, 0.1);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 6px;
+                color: #fff;
+                padding: 6px 8px;
+                font-size: 12px;
+                outline: none;
+            }
+            .mod-field input[type="range"] {
+                cursor: pointer;
+                accent-color: #00ffcc;
+            }
+            .mod-field select option {
+                background: #111;
+                color: #fff;
+            }
+            .mod-footer {
+                font-size: 10px;
+                text-align: center;
+                color: #777;
+                margin-top: 10px;
+                border-top: 1px solid rgba(255, 255, 255, 0.1);
+                padding-top: 8px;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // 2. Create Mod Menu DOM
+        const menu = document.createElement('div');
+        menu.id = 'fastroads-mod-menu';
+        menu.innerHTML = `
+            <h3>⚡ Fast Roads Menu</h3>
+            
+            <div class="mod-field">
+                <label>Car Size: <b id="val-scale">1.0x</b></label>
+                <input type="range" id="mod-scale" min="0.2" max="6" step="0.1" value="1">
+            </div>
+
+            <div class="mod-field">
+                <label>Vehicle Speed</label>
+                <input type="number" id="mod-speed" value="3000" step="500">
+            </div>
+
+            <div class="mod-field">
+                <label>Vehicle Type</label>
+                <select id="mod-type">
+                    <option value="car">Car / Roadster</option>
+                    <option value="bike">Bike</option>
+                    <option value="truck">Truck</option>
+                </select>
+            </div>
+
+            <div class="mod-field">
+                <label>Lighting / Time: <b id="val-light">0.5</b></label>
+                <input type="range" id="mod-light" min="0" max="2.5" step="0.1" value="0.5">
+            </div>
+
+            <div class="mod-footer">Press [ M ] to toggle menu</div>
+        `;
+        document.body.appendChild(menu);
+
+        // 3. Three.js Scene Helper
+        function getScene() {
+            if (window.scene && window.scene.isScene) return window.scene;
+            for (let key in window) {
+                try {
+                    if (window[key] && window[key].isScene) return window[key];
+                } catch (e) {}
+            }
+            return null;
+        }
+
+        // --- Menu Event Listeners ---
+
+        // 1. Car Scale Slider
+        const scaleInput = document.getElementById('mod-scale');
+        const scaleVal = document.getElementById('val-scale');
+        scaleInput.addEventListener('input', (e) => {
+            const scale = parseFloat(e.target.value);
+            scaleVal.textContent = scale.toFixed(1) + 'x';
+            
+            const scene = getScene();
+            if (scene) {
+                scene.traverse((obj) => {
+                    if (obj.isMesh && (
+                        obj.name.toLowerCase().includes('car') || 
+                        obj.name.toLowerCase().includes('chassis') || 
+                        obj.name.toLowerCase().includes('roadster') || 
+                        obj.name.toLowerCase().includes('vehicle') ||
+                        obj.name.toLowerCase().includes('wheel')
+                    )) {
+                        obj.scale.set(scale, scale, scale);
+                    }
+                });
+            }
+        });
+
+        // 2. Speed Control
+        const speedInput = document.getElementById('mod-speed');
+        speedInput.addEventListener('change', (e) => {
+            localStorage.setItem('config-vehicle-speed', e.target.value);
+        });
+
+        // 3. Vehicle Type Switcher
+        const typeInput = document.getElementById('mod-type');
+        typeInput.addEventListener('change', (e) => {
+            localStorage.setItem('config-vehicle-type', e.target.value);
+            location.reload(); // Reloads scene to load selected vehicle asset
+        });
+
+        // 4. Time of Day / Environment Light
+        const lightInput = document.getElementById('mod-light');
+        const lightVal = document.getElementById('val-light');
+        lightInput.addEventListener('input', (e) => {
+            const intensity = parseFloat(e.target.value);
+            lightVal.textContent = intensity.toFixed(1);
+
+            const scene = getScene();
+            if (scene) {
+                scene.traverse((obj) => {
+                    if (obj.isLight) {
+                        obj.intensity = intensity;
+                    }
+                });
+            }
+        });
+
+        // 5. Hide/Show UI with Keypress [M]
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'm' && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) {
+                menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+            }
+        });
+    })();
     function (e, t, i) {
       "use strict";
       i.r(t), (t.default = i.p + "static/media/debug_body.193b9327.obj");
@@ -3581,184 +3758,6 @@
           "farcells-staged": 0,
           "nearcell-staged": 0,
         },
-        /**
-       * Fast Roads Embedded Mod Menu
-       * Toggles with the [ M ] key
-       */
-      (function() {
-          // 1. Inject Menu Styles
-          const style = document.createElement('style');
-          style.textContent = `
-              #fastroads-mod-menu {
-                  position: fixed;
-                  top: 20px;
-                  right: 20px;
-                  width: 250px;
-                  background: rgba(15, 15, 20, 0.88);
-                  backdrop-filter: blur(10px);
-                  border: 1px solid rgba(0, 255, 204, 0.3);
-                  border-radius: 12px;
-                  color: #ffffff;
-                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                  padding: 16px;
-                  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-                  z-index: 999999;
-                  user-select: none;
-              }
-              #fastroads-mod-menu h3 {
-                  margin: 0 0 14px 0;
-                  font-size: 15px;
-                  text-align: center;
-                  color: #00ffcc;
-                  text-transform: uppercase;
-                  letter-spacing: 1px;
-              }
-              .mod-field {
-                  margin-bottom: 12px;
-                  display: flex;
-                  flex-direction: column;
-                  gap: 4px;
-              }
-              .mod-field label {
-                  font-size: 11px;
-                  color: #bbb;
-                  text-transform: uppercase;
-              }
-              .mod-field input, .mod-field select {
-                  background: rgba(255, 255, 255, 0.1);
-                  border: 1px solid rgba(255, 255, 255, 0.2);
-                  border-radius: 6px;
-                  color: #fff;
-                  padding: 6px 8px;
-                  font-size: 12px;
-                  outline: none;
-              }
-              .mod-field input[type="range"] {
-                  cursor: pointer;
-                  accent-color: #00ffcc;
-              }
-              .mod-field select option {
-                  background: #111;
-                  color: #fff;
-              }
-              .mod-footer {
-                  font-size: 10px;
-                  text-align: center;
-                  color: #777;
-                  margin-top: 10px;
-                  border-top: 1px solid rgba(255, 255, 255, 0.1);
-                  padding-top: 8px;
-              }
-          `;
-          document.head.appendChild(style);
-
-          // 2. Create Mod Menu DOM
-          const menu = document.createElement('div');
-          menu.id = 'fastroads-mod-menu';
-          menu.innerHTML = `
-              <h3>⚡ Fast Roads Menu</h3>
-              
-              <div class="mod-field">
-                  <label>Car Size: <b id="val-scale">1.0x</b></label>
-                  <input type="range" id="mod-scale" min="0.2" max="6" step="0.1" value="1">
-              </div>
-
-              <div class="mod-field">
-                  <label>Vehicle Speed</label>
-                  <input type="number" id="mod-speed" value="3000" step="500">
-              </div>
-
-              <div class="mod-field">
-                  <label>Vehicle Type</label>
-                  <select id="mod-type">
-                      <option value="car">Car / Roadster</option>
-                      <option value="bike">Bike</option>
-                      <option value="truck">Truck</option>
-                  </select>
-              </div>
-
-              <div class="mod-field">
-                  <label>Lighting / Time: <b id="val-light">0.5</b></label>
-                  <input type="range" id="mod-light" min="0" max="2.5" step="0.1" value="0.5">
-              </div>
-
-              <div class="mod-footer">Press [ M ] to toggle menu</div>
-          `;
-          document.body.appendChild(menu);
-
-          // 3. Three.js Scene Helper
-          function getScene() {
-              if (window.scene && window.scene.isScene) return window.scene;
-              for (let key in window) {
-                  try {
-                      if (window[key] && window[key].isScene) return window[key];
-                  } catch (e) {}
-              }
-              return null;
-          }
-
-          // --- Menu Event Listeners ---
-
-          // 1. Car Scale Slider
-          const scaleInput = document.getElementById('mod-scale');
-          const scaleVal = document.getElementById('val-scale');
-          scaleInput.addEventListener('input', (e) => {
-              const scale = parseFloat(e.target.value);
-              scaleVal.textContent = scale.toFixed(1) + 'x';
-              
-              const scene = getScene();
-              if (scene) {
-                  scene.traverse((obj) => {
-                      if (obj.isMesh && (
-                          obj.name.toLowerCase().includes('car') || 
-                          obj.name.toLowerCase().includes('chassis') || 
-                          obj.name.toLowerCase().includes('roadster') || 
-                          obj.name.toLowerCase().includes('vehicle') ||
-                          obj.name.toLowerCase().includes('wheel')
-                      )) {
-                          obj.scale.set(scale, scale, scale);
-                      }
-                  });
-              }
-          });
-
-          // 2. Speed Control
-          const speedInput = document.getElementById('mod-speed');
-          speedInput.addEventListener('change', (e) => {
-              localStorage.setItem('config-vehicle-speed', e.target.value);
-          });
-
-          // 3. Vehicle Type Switcher
-          const typeInput = document.getElementById('mod-type');
-          typeInput.addEventListener('change', (e) => {
-              localStorage.setItem('config-vehicle-type', e.target.value);
-              location.reload(); // Reloads scene to load selected vehicle asset
-          });
-
-          // 4. Time of Day / Environment Light
-          const lightInput = document.getElementById('mod-light');
-          const lightVal = document.getElementById('val-light');
-          lightInput.addEventListener('input', (e) => {
-              const intensity = parseFloat(e.target.value);
-              lightVal.textContent = intensity.toFixed(1);
-
-              const scene = getScene();
-              if (scene) {
-                  scene.traverse((obj) => {
-                      if (obj.isLight) {
-                          obj.intensity = intensity;
-                      }
-                  });
-              }
-          });
-
-          // 5. Hide/Show UI with Keypress [M]
-          window.addEventListener('keydown', (e) => {
-              if (e.key.toLowerCase() === 'm' && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) {
-                  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-              }
-          });
-      })();
         Xi = i(8);
       class Ji extends r.G {
         constructor(...e) {
