@@ -16015,178 +16015,193 @@
           this.camContainer.clear(), this.camera.clear(), qr.remove(this.debug);
         }
       };
-            /**
-       * Fast Roads Embedded Mod Menu
-       * Toggles with the [ M ] key
+      /**
+       * Fast Roads Tailored Mod Menu
+       * Specifically controls the internal `vehicles` data structure
+       * Toggle Visibility: Press [ M ]
        */
       (function() {
-          // 1. Inject Menu Styles
+          // Expose vehicles object if it exists in scope
+          if (typeof vehicles !== 'undefined') {
+              window.vehicles = vehicles;
+          }
+
+          // Inject Menu CSS
           const style = document.createElement('style');
           style.textContent = `
-              #fastroads-mod-menu {
+              #fastroads-tailored-menu {
                   position: fixed;
                   top: 20px;
-                  right: 20px;
-                  width: 250px;
-                  background: rgba(15, 15, 20, 0.88);
-                  backdrop-filter: blur(10px);
-                  border: 1px solid rgba(0, 255, 204, 0.3);
-                  border-radius: 12px;
-                  color: #ffffff;
-                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                  padding: 16px;
-                  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+                  left: 20px;
+                  width: 280px;
+                  background: rgba(10, 12, 18, 0.92);
+                  backdrop-filter: blur(12px);
+                  border: 1px solid #00e5ff;
+                  border-radius: 10px;
+                  color: #fff;
+                  font-family: monospace, sans-serif;
+                  padding: 14px;
+                  box-shadow: 0 0 20px rgba(0, 229, 255, 0.2);
                   z-index: 999999;
                   user-select: none;
               }
-              #fastroads-mod-menu h3 {
-                  margin: 0 0 14px 0;
-                  font-size: 15px;
+              #fastroads-tailored-menu h3 {
+                  margin: 0 0 10px 0;
+                  font-size: 14px;
+                  color: #00e5ff;
                   text-align: center;
-                  color: #00ffcc;
                   text-transform: uppercase;
-                  letter-spacing: 1px;
               }
-              .mod-field {
-                  margin-bottom: 12px;
+              .mod-row {
                   display: flex;
-                  flex-direction: column;
-                  gap: 4px;
-              }
-              .mod-field label {
+                  justify-content: space-between;
+                  align-items: center;
+                  margin-bottom: 8px;
                   font-size: 11px;
-                  color: #bbb;
-                  text-transform: uppercase;
               }
-              .mod-field input, .mod-field select {
-                  background: rgba(255, 255, 255, 0.1);
-                  border: 1px solid rgba(255, 255, 255, 0.2);
-                  border-radius: 6px;
-                  color: #fff;
-                  padding: 6px 8px;
-                  font-size: 12px;
-                  outline: none;
+              .mod-row label { color: #aaa; }
+              .mod-row input[type="number"], .mod-row select {
+                  width: 100px;
+                  background: #1a1d24;
+                  border: 1px solid #333;
+                  color: #00ffcc;
+                  padding: 3px 6px;
+                  border-radius: 4px;
+                  text-align: right;
               }
-              .mod-field input[type="range"] {
+              .mod-row input[type="checkbox"] { accent-color: #00e5ff; }
+              .mod-divider {
+                  border-top: 1px dashed rgba(255,255,255,0.15);
+                  margin: 10px 0;
+              }
+              .mod-btn {
+                  width: 100%;
+                  background: #00e5ff;
+                  color: #000;
+                  border: none;
+                  padding: 6px;
+                  font-weight: bold;
+                  border-radius: 4px;
                   cursor: pointer;
-                  accent-color: #00ffcc;
+                  margin-top: 5px;
               }
-              .mod-field select option {
-                  background: #111;
-                  color: #fff;
-              }
-              .mod-footer {
-                  font-size: 10px;
-                  text-align: center;
-                  color: #777;
-                  margin-top: 10px;
-                  border-top: 1px solid rgba(255, 255, 255, 0.1);
-                  padding-top: 8px;
-              }
+              .mod-btn:hover { background: #00b3cc; }
           `;
           document.head.appendChild(style);
 
-          // 2. Create Mod Menu DOM
+          // Create Menu Container
           const menu = document.createElement('div');
-          menu.id = 'fastroads-mod-menu';
+          menu.id = 'fastroads-tailored-menu';
           menu.innerHTML = `
-              <h3>⚡ Fast Roads Menu</h3>
+              <h3>⚡ Vehicle Physics Tuner</h3>
               
-              <div class="mod-field">
-                  <label>Car Size: <b id="val-scale">1.0x</b></label>
-                  <input type="range" id="mod-scale" min="0.2" max="6" step="0.1" value="1">
-              </div>
-
-              <div class="mod-field">
-                  <label>Vehicle Speed</label>
-                  <input type="number" id="mod-speed" value="3000" step="500">
-              </div>
-
-              <div class="mod-field">
-                  <label>Vehicle Type</label>
-                  <select id="mod-type">
-                      <option value="car">Car / Roadster</option>
-                      <option value="bike">Bike</option>
-                      <option value="truck">Truck</option>
+              <div class="mod-row">
+                  <label>Select Target:</label>
+                  <select id="target-veh">
+                      <option value="Bike">Bike</option>
+                      <option value="Supercar">Supercar</option>
+                      <option value="Lambo">Lambo</option>
+                      <option value="Roadster">Roadster</option>
+                      <option value="Bus">Coach Bus</option>
+                      <option value="Rover">Rover</option>
+                      <option value="Debug">Debug</option>
                   </select>
               </div>
 
-              <div class="mod-field">
-                  <label>Lighting / Time: <b id="val-light">0.5</b></label>
-                  <input type="range" id="mod-light" min="0" max="2.5" step="0.1" value="0.5">
+              <div class="mod-row">
+                  <label>Enable Vehicle:</label>
+                  <input type="checkbox" id="veh-enabled">
               </div>
 
-              <div class="mod-footer">Press [ M ] to toggle menu</div>
+              <div class="mod-divider"></div>
+
+              <div class="mod-row">
+                  <label>Top Speed:</label>
+                  <input type="number" id="veh-topSpeed">
+              </div>
+
+              <div class="mod-row">
+                  <label>Acceleration:</label>
+                  <input type="number" id="veh-accel">
+              </div>
+
+              <div class="mod-row">
+                  <label>Mass (kg):</label>
+                  <input type="number" id="veh-mass">
+              </div>
+
+              <div class="mod-row">
+                  <label>Aerodynamic Drag:</label>
+                  <input type="number" id="veh-drag" step="0.0001">
+              </div>
+
+              <div class="mod-divider"></div>
+
+              <div class="mod-row">
+                  <label>Wheel Radius:</label>
+                  <input type="number" id="veh-wheelRadius" step="0.05">
+              </div>
+
+              <div class="mod-row">
+                  <label>Wheel Width:</label>
+                  <input type="number" id="veh-wheelWidth" step="0.1">
+              </div>
+
+              <button class="mod-btn" id="apply-btn">Apply Changes</button>
           `;
           document.body.appendChild(menu);
 
-          // 3. Three.js Scene Helper
-          function getScene() {
-              if (window.scene && window.scene.isScene) return window.scene;
-              for (let key in window) {
-                  try {
-                      if (window[key] && window[key].isScene) return window[key];
-                  } catch (e) {}
-              }
+          // Helper to fetch live `vehicles` object
+          function getVehiclesObj() {
+              if (window.vehicles) return window.vehicles;
+              if (typeof vehicles !== 'undefined') return vehicles;
               return null;
           }
 
-          // --- Menu Event Listeners ---
+          // Populate input fields with current selected vehicle values
+          function loadVehicleData(key) {
+              const vData = getVehiclesObj();
+              if (!vData || !vData[key]) return;
 
-          // 1. Car Scale Slider
-          const scaleInput = document.getElementById('mod-scale');
-          const scaleVal = document.getElementById('val-scale');
-          scaleInput.addEventListener('input', (e) => {
-              const scale = parseFloat(e.target.value);
-              scaleVal.textContent = scale.toFixed(1) + 'x';
-              
-              const scene = getScene();
-              if (scene) {
-                  scene.traverse((obj) => {
-                      if (obj.isMesh && (
-                          obj.name.toLowerCase().includes('car') || 
-                          obj.name.toLowerCase().includes('chassis') || 
-                          obj.name.toLowerCase().includes('roadster') || 
-                          obj.name.toLowerCase().includes('vehicle') ||
-                          obj.name.toLowerCase().includes('wheel')
-                      )) {
-                          obj.scale.set(scale, scale, scale);
-                      }
-                  });
+              const target = vData[key];
+              document.getElementById('veh-enabled').checked = !!target.enabled;
+              document.getElementById('veh-topSpeed').value = target.metrics.topSpeed;
+              document.getElementById('veh-accel').value = target.metrics.accel;
+              document.getElementById('veh-mass').value = target.metrics.mass;
+              document.getElementById('veh-drag').value = target.metrics.drag;
+              document.getElementById('veh-wheelRadius').value = target.wheels.radius;
+              document.getElementById('veh-wheelWidth').value = target.wheels.width;
+          }
+
+          // Save UI values back to the live `vehicles` object
+          function applyVehicleData() {
+              const vData = getVehiclesObj();
+              const key = document.getElementById('target-veh').value;
+              if (!vData || !vData[key]) {
+                  alert("Could not access 'vehicles' object. Ensure 'window.vehicles = vehicles;' is set in source.");
+                  return;
               }
-          });
 
-          // 2. Speed Control
-          const speedInput = document.getElementById('mod-speed');
-          speedInput.addEventListener('change', (e) => {
-              localStorage.setItem('config-vehicle-speed', e.target.value);
-          });
+              const target = vData[key];
+              target.enabled = document.getElementById('veh-enabled').checked;
+              target.metrics.topSpeed = parseFloat(document.getElementById('veh-topSpeed').value) || 0;
+              target.metrics.accel = parseFloat(document.getElementById('veh-accel').value) || 0;
+              target.metrics.mass = parseFloat(document.getElementById('veh-mass').value) || 0;
+              target.metrics.drag = parseFloat(document.getElementById('veh-drag').value) || 0;
+              target.wheels.radius = parseFloat(document.getElementById('veh-wheelRadius').value) || 0;
+              target.wheels.width = parseFloat(document.getElementById('veh-wheelWidth').value) || 0;
 
-          // 3. Vehicle Type Switcher
-          const typeInput = document.getElementById('mod-type');
-          typeInput.addEventListener('change', (e) => {
-              localStorage.setItem('config-vehicle-type', e.target.value);
-              location.reload(); // Reloads scene to load selected vehicle asset
-          });
+              console.log(`Updated ${key} properties:`, target);
+          }
 
-          // 4. Time of Day / Environment Light
-          const lightInput = document.getElementById('mod-light');
-          const lightVal = document.getElementById('val-light');
-          lightInput.addEventListener('input', (e) => {
-              const intensity = parseFloat(e.target.value);
-              lightVal.textContent = intensity.toFixed(1);
+          // Event Bindings
+          document.getElementById('target-veh').addEventListener('change', (e) => loadVehicleData(e.target.value));
+          document.getElementById('apply-btn').addEventListener('click', applyVehicleData);
 
-              const scene = getScene();
-              if (scene) {
-                  scene.traverse((obj) => {
-                      if (obj.isLight) {
-                          obj.intensity = intensity;
-                      }
-                  });
-              }
-          });
+          // Initial Load
+          loadVehicleData('Bike');
 
-          // 5. Hide/Show UI with Keypress [M]
+          // Key Listener to toggle UI [ M ]
           window.addEventListener('keydown', (e) => {
               if (e.key.toLowerCase() === 'm' && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) {
                   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
