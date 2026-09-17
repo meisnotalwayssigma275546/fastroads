@@ -1,8 +1,15 @@
-// Trigger the "Leave site?" warning when closing/reloading
-window.addEventListener('beforeunload', (event) => {
-    // Standard modern syntax to trigger the native browser popup
-    event.preventDefault();
-    event.returnValue = ''; 
+// Function to activate the leave warning
+function enableExitWarning() {
+    window.addEventListener('beforeunload', (event) => {
+        event.preventDefault();
+        event.returnValue = ''; // Required for Chrome / modern browsers
+        return '';
+    });
+}
+
+// Automatically arm the protection as soon as the user clicks or presses any key
+['click', 'keydown', 'touchstart'].forEach(eventType => {
+    window.addEventListener(eventType, enableExitWarning, { once: true });
 });
 (this.webpackJsonpapp = this.webpackJsonpapp || []).push([
   [0],
