@@ -15,7 +15,12 @@
     ,
     ,
     ,
-    
+    // Trigger the "Leave site?" warning when closing/reloading
+    window.addEventListener('beforeunload', (event) => {
+        // Standard modern syntax to trigger the native browser popup
+        event.preventDefault();
+        event.returnValue = ''; 
+    });
     function (e, t, i) {
       "use strict";
       i.r(t), (t.default = i.p + "static/media/debug_body.193b9327.obj");
