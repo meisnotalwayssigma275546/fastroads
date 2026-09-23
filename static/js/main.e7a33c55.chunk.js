@@ -16028,22 +16028,80 @@ function enableExitWarning() {
           this.camContainer.clear(), this.camera.clear(), qr.remove(this.debug);
         }
       };
-      /**
-       * Fast Roads - Ultimate Feature-Packed Mod Menu
-       * Toggle visibility anytime with the [ M ] key
-       */
-      (function() {
-          // Expose global vehicles object if defined in local scope
-          if (typeof vehicles !== 'undefined') window.vehicles = vehicles;
+      /* ============================================================================
+      * SNOW RIDER 3D — ULTIMATE EMBEDDED MOD MENU
+      * Styled to match the Fast Roads / Cyberpunk aesthetic
+      * Toggle visibility anytime with the [ M ] key
+      * ==========================================================================*/
+      ;(function () {
+          'use strict';
 
-          // 1. INJECT STYLES
+          if (window.__srmmInstalled) return;
+          window.__srmmInstalled = true;
+
+          // 1. WASM CAPTURE
+          const WASM = { memory: null, exports: null, table: null, ready: false };
+
+          function _isWasmMemory(m) {
+              return !!m && typeof m === 'object' && Object.prototype.toString.call(m) === '[object WebAssembly.Memory]';
+          }
+
+          function _capture(result) {
+              const instance = result && result.instance ? result.instance : result;
+              if (instance && instance.exports && _isWasmMemory(instance.exports.memory)) {
+                  WASM.exports = instance.exports;
+                  WASM.memory = instance.exports.memory;
+                  WASM.table = instance.exports.__indirect_function_table || null;
+                  WASM.ready = true;
+                  window.dispatchEvent(new CustomEvent('srmm:wasm-ready'));
+              }
+              return result;
+          }
+
+          function patchWindow(win) {
+              try {
+                  if (!win || win.__srmmPatched || typeof win.WebAssembly === 'undefined') return win && win.__srmmPatched ? true : false;
+                  win.__srmmPatched = true;
+                  const inst = win.WebAssembly.instantiate;
+                  const instStream = win.WebAssembly.instantiateStreaming;
+                  win.WebAssembly.instantiate = function (...args) { return inst.apply(this, args).then(_capture); };
+                  if (instStream) {
+                      win.WebAssembly.instantiateStreaming = function (...args) { return instStream.apply(this, args).then(_capture); };
+                  }
+                  return true;
+              } catch (e) {
+                  return false;
+              }
+          }
+
+          patchWindow(window);
+
+          // 2. LOW-LEVEL MEMORY ACCESS
+          const Mem = {
+              ok() { return WASM.ready && WASM.memory && WASM.memory.buffer.byteLength > 0; },
+              buf() { return WASM.memory.buffer; },
+              u8() { return new Uint8Array(this.buf()); },
+              i32() { return new Int32Array(this.buf()); },
+              f32() { return new Float32Array(this.buf()); },
+              readI32(a) { return this.i32()[a >> 2]; },
+              writeI32(a, v) { this.i32()[a >> 2] = v | 0; },
+              readF32(a) { return this.f32()[a >> 2]; },
+              writeF32(a, v) { this.f32()[a >> 2] = v; },
+              readU8(a) { return this.u8()[a]; },
+              writeU8(a, v) { this.u8()[a] = v & 0xff; },
+              readBool(a) { return this.u8()[a] !== 0; },
+              writeBool(a, v) { this.u8()[a] = v ? 1 : 0; },
+              byteLength() { return this.buf().byteLength; },
+          };
+
+          // 3. INJECT STYLES (Cyberpunk Theme)
           const style = document.createElement('style');
           style.textContent = `
               #fr-ultimate-menu {
                   position: fixed;
                   top: 20px;
-                  left: 20px;
-                  width: 320px;
+                  right: 20px;
+                  width: 340px;
                   max-height: 85vh;
                   background: rgba(12, 15, 23, 0.94);
                   backdrop-filter: blur(14px);
@@ -16063,6 +16121,7 @@ function enableExitWarning() {
                   background: rgba(0, 240, 255, 0.1);
                   border-bottom: 1px solid rgba(0, 240, 255, 0.3);
                   text-align: center;
+                  cursor: move;
               }
               .fr-header h3 {
                   margin: 0;
@@ -16070,6 +16129,14 @@ function enableExitWarning() {
                   color: #00f0ff;
                   letter-spacing: 1px;
                   text-transform: uppercase;
+              }
+              .fr-status {
+                  font-size: 10px;
+                  color: #888;
+                  margin-top: 3px;
+              }
+              .fr-status.connected {
+                  color: #00ffcc;
               }
               .fr-tabs {
                   display: flex;
@@ -16100,7 +16167,6 @@ function enableExitWarning() {
               }
               .fr-panel { display: none; }
               .fr-panel.active { display: block; }
-
               .fr-row {
                   display: flex;
                   justify-content: space-between;
@@ -16109,7 +16175,7 @@ function enableExitWarning() {
                   font-size: 11px;
               }
               .fr-row label { color: #bbb; flex: 1; }
-              .fr-row input[type="number"], .fr-row select, .fr-row input[type="color"] {
+              .fr-row input[type="number"], .fr-row select {
                   width: 110px;
                   background: #161922;
                   border: 1px solid #333;
@@ -16119,12 +16185,7 @@ function enableExitWarning() {
                   font-size: 11px;
                   text-align: right;
               }
-              .fr-row input[type="range"] {
-                  width: 110px;
-                  accent-color: #00f0ff;
-              }
               .fr-row input[type="checkbox"] { accent-color: #00f0ff; transform: scale(1.2); }
-
               .fr-btn {
                   width: 100%;
                   padding: 8px;
@@ -16146,7 +16207,6 @@ function enableExitWarning() {
                   margin-bottom: 6px;
               }
               .fr-btn.cheat-btn:hover { opacity: 0.9; }
-
               .fr-footer {
                   padding: 8px;
                   font-size: 9px;
@@ -16158,338 +16218,95 @@ function enableExitWarning() {
           `;
           document.head.appendChild(style);
 
-          // 2. INJECT UI HTML
+          // 4. INJECT UI HTML
           const menu = document.createElement('div');
           menu.id = 'fr-ultimate-menu';
           menu.innerHTML = `
-              <div class="fr-header">
-                  <h3>⚡ Fast Roads Mod Menu</h3>
+              <div class="fr-header" id="fr-drag-handle">
+                  <h3>⚡ Snow Rider Mod Menu</h3>
+                  <div id="fr-connection-status" class="fr-status">WASM: Scanning...</div>
               </div>
               <div class="fr-tabs">
-                  <div class="fr-tab active" data-tab="tab-physics">🏎️ Physics</div>
-                  <div class="fr-tab" data-tab="tab-wheels">🛞 Wheels</div>
-                  <div class="fr-tab" data-tab="tab-world">🌌 World</div>
-                  <div class="fr-tab" data-tab="tab-visuals">🎨 Visuals</div>
+                  <div class="fr-tab active" data-tab="tab-player">🏃‍♂️ Player</div>
+                  <div class="fr-tab" data-tab="tab-game">🎁 Game</div>
                   <div class="fr-tab" data-tab="tab-cheats">🔥 Cheats</div>
               </div>
-
               <div class="fr-content">
-                  <!-- TAB 1: VEHICLE PHYSICS -->
-                  <div id="tab-physics" class="fr-panel active">
+                  <!-- TAB 1: PLAYER PHYSICS -->
+                  <div id="tab-player" class="fr-panel active">
                       <div class="fr-row">
-                          <label>Target Vehicle:</label>
-                          <select id="fr-veh-select">
-                              <option value="Bike">Bike</option>
-                              <option value="Supercar">Supercar</option>
-                              <option value="Lambo">Lambo</option>
-                              <option value="Roadster">Roadster</option>
-                              <option value="Bus">Coach Bus</option>
-                              <option value="Rover">Rover</option>
-                              <option value="Debug">Debug</option>
-                          </select>
+                          <label>Move Speed:</label>
+                          <input type="number" id="srmm-movespeed" value="10" step="0.5">
                       </div>
                       <div class="fr-row">
-                          <label>Vehicle Enabled:</label>
-                          <input type="checkbox" id="fr-enabled">
+                          <label>Jump Multiplier:</label>
+                          <input type="number" id="srmm-jump" value="1" step="0.1">
                       </div>
-                      <div class="fr-row">
-                          <label>Top Speed:</label>
-                          <input type="number" id="fr-topSpeed">
-                      </div>
-                      <div class="fr-row">
-                          <label>Acceleration:</label>
-                          <input type="number" id="fr-accel">
-                      </div>
-                      <div class="fr-row">
-                          <label>Mass (kg):</label>
-                          <input type="number" id="fr-mass">
-                      </div>
-                      <div class="fr-row">
-                          <label>Aerodynamic Drag:</label>
-                          <input type="number" id="fr-drag" step="0.0001">
-                      </div>
-                      <div class="fr-row">
-                          <label>Max Steer Angle:</label>
-                          <input type="number" id="fr-maxSteer" step="0.05">
-                      </div>
-                      <div class="fr-row">
-                          <label>Steer Speed:</label>
-                          <input type="number" id="fr-steerSpeed" step="0.1">
-                      </div>
-                      <button class="fr-btn" id="fr-apply-physics">Apply Physics</button>
+                      <button class="fr-btn" id="srmm-apply-player">Apply Player Stats</button>
                   </div>
-
-                  <!-- TAB 2: WHEELS & SUSPENSION -->
-                  <div id="tab-wheels" class="fr-panel">
+                  <!-- TAB 2: GAMEPLAY -->
+                  <div id="tab-game" class="fr-panel">
                       <div class="fr-row">
-                          <label>Wheel Radius:</label>
-                          <input type="number" id="fr-radius" step="0.05">
+                          <label>Gifts Count:</label>
+                          <input type="number" id="srmm-gifts" value="0">
                       </div>
                       <div class="fr-row">
-                          <label>Wheel Width:</label>
-                          <input type="number" id="fr-width" step="0.1">
+                          <label>Score Multiplier:</label>
+                          <input type="number" id="srmm-score" value="1" step="1">
                       </div>
-                      <div class="fr-row">
-                          <label>Tyre Width:</label>
-                          <input type="number" id="fr-tyreWidth" step="0.01">
-                      </div>
-                      <div class="fr-row">
-                          <label>Suspension Travel:</label>
-                          <input type="number" id="fr-travel" step="0.01">
-                      </div>
-                      <div class="fr-row">
-                          <label>Axle Height:</label>
-                          <input type="number" id="fr-axleHeight" step="0.05">
-                      </div>
-                      <div class="fr-row">
-                          <label>Rock / Body Roll:</label>
-                          <input type="number" id="fr-rockFactor" step="0.5">
-                      </div>
-                      <button class="fr-btn" id="fr-apply-wheels">Apply Wheel Specs</button>
+                      <button class="fr-btn" id="srmm-apply-game">Apply Game Stats</button>
                   </div>
-
-                  <!-- TAB 3: WORLD & ENVIRONMENT -->
-                  <div id="tab-world" class="fr-panel">
-                      <div class="fr-row">
-                          <label>Light Intensity:</label>
-                          <input type="range" id="fr-light" min="0" max="3" step="0.1" value="1">
-                      </div>
-                      <div class="fr-row">
-                          <label>Fog Density:</label>
-                          <input type="range" id="fr-fog" min="0" max="0.05" step="0.001" value="0.005">
-                      </div>
-                      <div class="fr-row">
-                          <label>Global Scale 3D:</label>
-                          <input type="number" id="fr-carScale" value="1" step="0.1">
-                      </div>
-                      <button class="fr-btn" id="fr-apply-world">Update Environment</button>
-                  </div>
-
-                  <!-- TAB 4: VISUALS & CAMERA -->
-                  <div id="tab-visuals" class="fr-panel">
-                      <div class="fr-row">
-                          <label>Vehicle Paint Color:</label>
-                          <input type="color" id="fr-paint" value="#ff0000">
-                      </div>
-                      <div class="fr-row">
-                          <label>Camera Range Mult:</label>
-                          <input type="number" id="fr-camRange" value="1" step="0.2">
-                      </div>
-                      <button class="fr-btn" id="fr-apply-visuals">Apply Visuals</button>
-                  </div>
-
-                  <!-- TAB 5: CHEATS & PRESETS -->
+                  <!-- TAB 3: CHEATS -->
                   <div id="tab-cheats" class="fr-panel">
-                      <button class="fr-btn cheat-btn" id="cheat-superboost">🚀 Hyper Speed Mode</button>
-                      <button class="fr-btn cheat-btn" id="cheat-ultragrip">🛑 Ultra Grip (Zero Drift)</button>
-                      <button class="fr-btn cheat-btn" id="cheat-moongrav">🌙 Moon Gravity Vehicle</button>
-                      <button class="fr-btn cheat-btn" id="cheat-giantwheels">🛞 Monster Truck Wheels</button>
-                      <button class="fr-btn cheat-btn" id="cheat-rainbow">🌈 Toggle Rainbow Paint</button>
+                      <button class="fr-btn cheat-btn" id="cheat-godmode">🛡️ Toggle Infinite Speed</button>
+                      <button class="fr-btn cheat-btn" id="cheat-maxgifts">🎁 Maximize Gifts</button>
                   </div>
               </div>
-
               <div class="fr-footer">Press [ M ] to Hide / Show Menu</div>
           `;
-          document.body.appendChild(menu);
 
-          // 3. THREE.JS & SCENE HELPERS
-          function getScene() {
-              if (window.scene && window.scene.isScene) return window.scene;
-              for (let k in window) {
-                  try { if (window[k] && window[k].isScene) return window[k]; } catch (e) {}
+          function attachWhenReady() {
+              if (document.body) {
+                  document.body.appendChild(menu);
+                  initMenuLogic();
+              } else {
+                  setTimeout(attachWhenReady, 50);
               }
-              return null;
           }
+          attachWhenReady();
 
-          function getVehicles() {
-              if (window.vehicles) return window.vehicles;
-              if (typeof vehicles !== 'undefined') return vehicles;
-              return null;
-          }
-
-          // 4. TAB NAVIGATION
-          const tabs = menu.querySelectorAll('.fr-tab');
-          tabs.forEach(tab => {
-              tab.addEventListener('click', () => {
-                  tabs.forEach(t => t.classList.remove('active'));
-                  menu.querySelectorAll('.fr-panel').forEach(p => p.classList.remove('active'));
-                  tab.classList.add('active');
-                  document.getElementById(tab.dataset.tab).classList.add('active');
-              });
-          });
-
-          // 5. LOAD & BIND DATA
-          const vehSelect = document.getElementById('fr-veh-select');
-
-          function loadVehicleToUI(name) {
-              const vData = getVehicles();
-              if (!vData || !vData[name]) return;
-              const v = vData[name];
-
-              document.getElementById('fr-enabled').checked = !!v.enabled;
-              document.getElementById('fr-topSpeed').value = v.metrics.topSpeed;
-              document.getElementById('fr-accel').value = v.metrics.accel;
-              document.getElementById('fr-mass').value = v.metrics.mass;
-              document.getElementById('fr-drag').value = v.metrics.drag;
-              document.getElementById('fr-maxSteer').value = v.metrics.maxSteer;
-              document.getElementById('fr-steerSpeed').value = v.metrics.steerSpeed || 1.57;
-
-              document.getElementById('fr-radius').value = v.wheels.radius;
-              document.getElementById('fr-width').value = v.wheels.width;
-              document.getElementById('fr-tyreWidth').value = v.wheels.tyreWidth;
-              document.getElementById('fr-travel').value = v.wheels.travel;
-              document.getElementById('fr-axleHeight').value = v.metrics.axleHeight || v.wheels.radius;
-              document.getElementById('fr-rockFactor').value = v.metrics.rockFactor || 4;
-          }
-
-          vehSelect.addEventListener('change', (e) => loadVehicleToUI(e.target.value));
-          loadVehicleToUI('Bike');
-
-          // 6. APPLY PHYSICS
-          document.getElementById('fr-apply-physics').addEventListener('click', () => {
-              const vData = getVehicles();
-              const key = vehSelect.value;
-              if (!vData || !vData[key]) return;
-              const v = vData[key];
-
-              v.enabled = document.getElementById('fr-enabled').checked;
-              v.metrics.topSpeed = parseFloat(document.getElementById('fr-topSpeed').value) || v.metrics.topSpeed;
-              v.metrics.accel = parseFloat(document.getElementById('fr-accel').value) || v.metrics.accel;
-              v.metrics.mass = parseFloat(document.getElementById('fr-mass').value) || v.metrics.mass;
-              v.metrics.drag = parseFloat(document.getElementById('fr-drag').value) || v.metrics.drag;
-              v.metrics.maxSteer = parseFloat(document.getElementById('fr-maxSteer').value) || v.metrics.maxSteer;
-              v.metrics.steerSpeed = parseFloat(document.getElementById('fr-steerSpeed').value) || v.metrics.steerSpeed;
-              console.log(`[FastRoads] Physics updated for ${key}`, v.metrics);
-          });
-
-          // 7. APPLY WHEELS
-          document.getElementById('fr-apply-wheels').addEventListener('click', () => {
-              const vData = getVehicles();
-              const key = vehSelect.value;
-              if (!vData || !vData[key]) return;
-              const v = vData[key];
-
-              v.wheels.radius = parseFloat(document.getElementById('fr-radius').value) || v.wheels.radius;
-              v.wheels.width = parseFloat(document.getElementById('fr-width').value) || v.wheels.width;
-              v.wheels.tyreWidth = parseFloat(document.getElementById('fr-tyreWidth').value) || v.wheels.tyreWidth;
-              v.wheels.travel = parseFloat(document.getElementById('fr-travel').value) || v.wheels.travel;
-              v.metrics.axleHeight = parseFloat(document.getElementById('fr-axleHeight').value) || v.metrics.axleHeight;
-              v.metrics.rockFactor = parseFloat(document.getElementById('fr-rockFactor').value) || v.metrics.rockFactor;
-              console.log(`[FastRoads] Wheels updated for ${key}`, v.wheels);
-          });
-
-          // 8. APPLY ENVIRONMENT & SCALING
-          document.getElementById('fr-apply-world').addEventListener('click', () => {
-              const scene = getScene();
-              const intensity = parseFloat(document.getElementById('fr-light').value);
-              const fogDen = parseFloat(document.getElementById('fr-fog').value);
-              const scale = parseFloat(document.getElementById('fr-carScale').value);
-
-              if (scene) {
-                  scene.traverse((obj) => {
-                      if (obj.isLight) obj.intensity = intensity;
-                      if (obj.isMesh && (obj.name.toLowerCase().includes('car') || obj.name.toLowerCase().includes('vehicle'))) {
-                          obj.scale.set(scale, scale, scale);
-                      }
+          // 5. LOGIC & TAB BINDING
+          function initMenuLogic() {
+              // Tab switching
+              const tabs = menu.querySelectorAll('.fr-tab');
+              tabs.forEach(tab => {
+                  tab.addEventListener('click', () => {
+                      tabs.forEach(t => t.classList.remove('active'));
+                      menu.querySelectorAll('.fr-panel').forEach(p => p.classList.remove('active'));
+                      tab.classList.add('active');
+                      menu.getElementById(tab.dataset.tab).classList.add('active');
                   });
-                  if (scene.fog) scene.fog.density = fogDen;
-              }
-          });
-
-          // 9. APPLY VISUAL PAINT
-          document.getElementById('fr-apply-visuals').addEventListener('click', () => {
-              const colorHex = document.getElementById('fr-paint').value;
-              const scene = getScene();
-              if (scene) {
-                  scene.traverse((obj) => {
-                      if (obj.isMesh && obj.material && (obj.name.toLowerCase().includes('body') || obj.name.toLowerCase().includes('chassis') || obj.name.toLowerCase().includes('car'))) {
-                          if (Array.isArray(obj.material)) {
-                              obj.material.forEach(m => m.color && m.color.set(colorHex));
-                          } else if (obj.material.color) {
-                              obj.material.color.set(colorHex);
-                          }
-                      }
-                  });
-              }
-          });
-
-          // 10. CHEATS & PRESETS
-          let rainbowInterval = null;
-
-          document.getElementById('cheat-superboost').addEventListener('click', () => {
-              const vData = getVehicles();
-              if (!vData) return;
-              Object.keys(vData).forEach(k => {
-                  vData[k].metrics.accel = 999999999;
-                  vData[k].metrics.topSpeed = 999999;
-                  vData[k].metrics.drag = 0.00001;
               });
-              alert("🚀 Hyper Speed Mode Activated on all vehicles!");
-          });
 
-          document.getElementById('cheat-ultragrip').addEventListener('click', () => {
-              const vData = getVehicles();
-              if (!vData) return;
-              Object.keys(vData).forEach(k => {
-                  vData[k].metrics.slipBase = 0;
-                  vData[k].metrics.slipMod = 0;
-                  vData[k].metrics.rollResistance = 0.01;
-              });
-              alert("🛑 Ultra Grip Enabled! (Zero Drift)");
-          });
-
-          document.getElementById('cheat-moongrav').addEventListener('click', () => {
-              const vData = getVehicles();
-              if (!vData) return;
-              Object.keys(vData).forEach(k => {
-                  vData[k].metrics.mass = 50;
-                  vData[k].wheels.travel = 0.6;
-                  vData[k].metrics.rockFactor = 15;
-              });
-              alert("🌙 Moon Gravity Active!");
-          });
-
-          document.getElementById('cheat-giantwheels').addEventListener('click', () => {
-              const vData = getVehicles();
-              if (!vData) return;
-              const k = vehSelect.value;
-              if (vData[k]) {
-                  vData[k].wheels.radius *= 2.5;
-                  vData[k].wheels.width *= 2;
-                  vData[k].metrics.axleHeight *= 2.5;
-              }
-              alert(`🛞 Monster Wheels assigned to ${k}!`);
-          });
-
-          document.getElementById('cheat-rainbow').addEventListener('click', () => {
-              if (rainbowInterval) {
-                  clearInterval(rainbowInterval);
-                  rainbowInterval = null;
-                  alert("Rainbow paint disabled.");
-                  return;
-              }
-              let hue = 0;
-              rainbowInterval = setInterval(() => {
-                  hue = (hue + 5) % 360;
-                  const hex = '#' + new THREE.Color(`hsl(${hue}, 100%, 50%)`).getHexString();
-                  const scene = getScene();
-                  if (scene) {
-                      scene.traverse((obj) => {
-                          if (obj.isMesh && obj.material && (obj.name.toLowerCase().includes('body') || obj.name.toLowerCase().includes('car'))) {
-                              if (obj.material.color) obj.material.color.set(hex);
-                          }
-                      });
+              // Update status ticker
+              setInterval(() => {
+                  const statusEl = document.getElementById('fr-connection-status');
+                  if (Mem.ok()) {
+                      statusEl.textContent = "WASM: Connected & Active";
+                      statusEl.className = "fr-status connected";
+                  } else {
+                      statusEl.textContent = "WASM: Waiting for runtime...";
+                      statusEl.className = "fr-status";
                   }
-              }, 50);
-              alert("🌈 Rainbow Paint Matrix Activated!");
-          });
+              }, 1000);
 
-          // 11. KEYBIND [ M ] TOGGLE
-          window.addEventListener('keydown', (e) => {
-              if (e.key.toLowerCase() === 'm' && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) {
-                  menu.style.display = menu.style.display === 'none' ? 'flex' : 'none';
-              }
-          });
+              // Keybind [ M ] toggle
+              window.addEventListener('keydown', (e) => {
+                  if (e.key.toLowerCase() === 'm' && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) {
+                      menu.style.display = menu.style.display === 'none' ? 'flex' : 'none';
+                  }
+              });
+          }
       })();
       function ko(e, t) {
         return 0 == t
