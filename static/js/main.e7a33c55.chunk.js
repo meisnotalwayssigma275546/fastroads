@@ -16029,285 +16029,384 @@ function enableExitWarning() {
         }
       };
       /* ============================================================================
-      * SNOW RIDER 3D — ULTIMATE EMBEDDED MOD MENU
-      * Styled to match the Fast Roads / Cyberpunk aesthetic
-      * Toggle visibility anytime with the [ M ] key
-      * ==========================================================================*/
-      ;(function () {
-          'use strict';
+    * SNOW RIDER 3D — FULL ULTIMATE EMBEDDED MOD MENU (RESTORED)
+    * Cyberpunk Theme with Full Memory Scanner & Value Injectors
+    * Toggle visibility anytime with the [ M ] key
+    * ==========================================================================*/
+    ;(function () {
+        'use strict';
 
-          if (window.__srmmInstalled) return;
-          window.__srmmInstalled = true;
+        if (window.__srmmInstalled) return;
+        window.__srmmInstalled = true;
 
-          // 1. WASM CAPTURE
-          const WASM = { memory: null, exports: null, table: null, ready: false };
+        // 1. ADVANCED WASM CAPTURE & INSPECTION
+        const WASM = { memory: null, exports: null, table: null, ready: false, instances: [] };
 
-          function _isWasmMemory(m) {
-              return !!m && typeof m === 'object' && Object.prototype.toString.call(m) === '[object WebAssembly.Memory]';
-          }
+        function _isWasmMemory(m) {
+            return !!m && typeof m === 'object' && Object.prototype.toString.call(m) === '[object WebAssembly.Memory]';
+        }
 
-          function _capture(result) {
-              const instance = result && result.instance ? result.instance : result;
-              if (instance && instance.exports && _isWasmMemory(instance.exports.memory)) {
-                  WASM.exports = instance.exports;
-                  WASM.memory = instance.exports.memory;
-                  WASM.table = instance.exports.__indirect_function_table || null;
-                  WASM.ready = true;
-                  window.dispatchEvent(new CustomEvent('srmm:wasm-ready'));
-              }
-              return result;
-          }
+        function _capture(result) {
+            const instance = result && result.instance ? result.instance : result;
+            if (instance && instance.exports) {
+                WASM.instances.push(instance);
+                if (_isWasmMemory(instance.exports.memory)) {
+                    WASM.exports = instance.exports;
+                    WASM.memory = instance.exports.memory;
+                    WASM.table = instance.exports.__indirect_function_table || null;
+                    WASM.ready = true;
+                    window.dispatchEvent(new CustomEvent('srmm:wasm-ready'));
+                }
+            }
+            return result;
+        }
 
-          function patchWindow(win) {
-              try {
-                  if (!win || win.__srmmPatched || typeof win.WebAssembly === 'undefined') return win && win.__srmmPatched ? true : false;
-                  win.__srmmPatched = true;
-                  const inst = win.WebAssembly.instantiate;
-                  const instStream = win.WebAssembly.instantiateStreaming;
-                  win.WebAssembly.instantiate = function (...args) { return inst.apply(this, args).then(_capture); };
-                  if (instStream) {
-                      win.WebAssembly.instantiateStreaming = function (...args) { return instStream.apply(this, args).then(_capture); };
-                  }
-                  return true;
-              } catch (e) {
-                  return false;
-              }
-          }
+        function patchWindow(win) {
+            try {
+                if (!win || win.__srmmPatched || typeof win.WebAssembly === 'undefined') return;
+                win.__srmmPatched = true;
+                const inst = win.WebAssembly.instantiate;
+                const instStream = win.WebAssembly.instantiateStreaming;
+                win.WebAssembly.instantiate = function (...args) { return inst.apply(this, args).then(_capture); };
+                if (instStream) {
+                    win.WebAssembly.instantiateStreaming = function (...args) { return instStream.apply(this, args).then(_capture); };
+                }
+            } catch (e) {
+                console.warn('[SRMM] Failed to patch WebAssembly:', e);
+            }
+        }
 
-          patchWindow(window);
+        patchWindow(window);
 
-          // 2. LOW-LEVEL MEMORY ACCESS
-          const Mem = {
-              ok() { return WASM.ready && WASM.memory && WASM.memory.buffer.byteLength > 0; },
-              buf() { return WASM.memory.buffer; },
-              u8() { return new Uint8Array(this.buf()); },
-              i32() { return new Int32Array(this.buf()); },
-              f32() { return new Float32Array(this.buf()); },
-              readI32(a) { return this.i32()[a >> 2]; },
-              writeI32(a, v) { this.i32()[a >> 2] = v | 0; },
-              readF32(a) { return this.f32()[a >> 2]; },
-              writeF32(a, v) { this.f32()[a >> 2] = v; },
-              readU8(a) { return this.u8()[a]; },
-              writeU8(a, v) { this.u8()[a] = v & 0xff; },
-              readBool(a) { return this.u8()[a] !== 0; },
-              writeBool(a, v) { this.u8()[a] = v ? 1 : 0; },
-              byteLength() { return this.buf().byteLength; },
-          };
+        // 2. LOW-LEVEL MEMORY ACCESS & SCANNER
+        const Mem = {
+            ok() { return WASM.ready && WASM.memory && WASM.memory.buffer.byteLength > 0; },
+            buf() { return WASM.memory.buffer; },
+            u8() { return new Uint8Array(this.buf()); },
+            i32() { return new Int32Array(this.buf()); },
+            f32() { return new Float32Array(this.buf()); },
+            readI32(a) { return this.i32()[a >> 2]; },
+            writeI32(a, v) { this.i32()[a >> 2] = v | 0; },
+            readF32(a) { return this.f32()[a >> 2]; },
+            writeF32(a, v) { this.f32()[a >> 2] = v; },
+            readU8(a) { return this.u8()[a]; },
+            writeU8(a, v) { this.u8()[a] = v & 0xff; },
+            
+            // Exact Value Scanner
+            scanF32(targetVal, tolerance = 0.0001) {
+                if (!this.ok()) return [];
+                const results = [];
+                const f32 = this.f32();
+                const len = f32.length;
+                for (let i = 0; i < len; i++) {
+                    if (Math.abs(f32[i] - targetVal) <= tolerance) {
+                        results.push(i << 2);
+                    }
+                }
+                return results;
+            },
 
-          // 3. INJECT STYLES (Cyberpunk Theme)
-          const style = document.createElement('style');
-          style.textContent = `
-              #fr-ultimate-menu {
-                  position: fixed;
-                  top: 20px;
-                  right: 20px;
-                  width: 340px;
-                  max-height: 85vh;
-                  background: rgba(12, 15, 23, 0.94);
-                  backdrop-filter: blur(14px);
-                  border: 1px solid #00f0ff;
-                  border-radius: 12px;
-                  color: #f0f0f0;
-                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
-                  box-shadow: 0 10px 35px rgba(0, 240, 255, 0.25);
-                  z-index: 9999999;
-                  overflow: hidden;
-                  display: flex;
-                  flex-direction: column;
-                  user-select: none;
-              }
-              .fr-header {
-                  padding: 12px;
-                  background: rgba(0, 240, 255, 0.1);
-                  border-bottom: 1px solid rgba(0, 240, 255, 0.3);
-                  text-align: center;
-                  cursor: move;
-              }
-              .fr-header h3 {
-                  margin: 0;
-                  font-size: 14px;
-                  color: #00f0ff;
-                  letter-spacing: 1px;
-                  text-transform: uppercase;
-              }
-              .fr-status {
-                  font-size: 10px;
-                  color: #888;
-                  margin-top: 3px;
-              }
-              .fr-status.connected {
-                  color: #00ffcc;
-              }
-              .fr-tabs {
-                  display: flex;
-                  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                  background: rgba(0,0,0,0.3);
-              }
-              .fr-tab {
-                  flex: 1;
-                  padding: 8px 4px;
-                  font-size: 10px;
-                  text-align: center;
-                  cursor: pointer;
-                  color: #888;
-                  border-bottom: 2px solid transparent;
-                  transition: all 0.2s;
-              }
-              .fr-tab.active {
-                  color: #00f0ff;
-                  border-bottom-color: #00f0ff;
-                  background: rgba(0, 240, 255, 0.05);
-                  font-weight: bold;
-              }
-              .fr-content {
-                  padding: 12px;
-                  overflow-y: auto;
-                  flex-grow: 1;
-                  max-height: 60vh;
-              }
-              .fr-panel { display: none; }
-              .fr-panel.active { display: block; }
-              .fr-row {
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-                  margin-bottom: 10px;
-                  font-size: 11px;
-              }
-              .fr-row label { color: #bbb; flex: 1; }
-              .fr-row input[type="number"], .fr-row select {
-                  width: 110px;
-                  background: #161922;
-                  border: 1px solid #333;
-                  color: #00ffcc;
-                  padding: 4px;
-                  border-radius: 4px;
-                  font-size: 11px;
-                  text-align: right;
-              }
-              .fr-row input[type="checkbox"] { accent-color: #00f0ff; transform: scale(1.2); }
-              .fr-btn {
-                  width: 100%;
-                  padding: 8px;
-                  margin-top: 6px;
-                  background: #00f0ff;
-                  color: #080a0f;
-                  border: none;
-                  border-radius: 6px;
-                  font-weight: bold;
-                  font-size: 11px;
-                  cursor: pointer;
-                  text-transform: uppercase;
-                  letter-spacing: 0.5px;
-              }
-              .fr-btn:hover { background: #00c8d6; }
-              .fr-btn.cheat-btn {
-                  background: linear-gradient(135deg, #ff0055, #ff5500);
-                  color: #fff;
-                  margin-bottom: 6px;
-              }
-              .fr-btn.cheat-btn:hover { opacity: 0.9; }
-              .fr-footer {
-                  padding: 8px;
-                  font-size: 9px;
-                  color: #666;
-                  text-align: center;
-                  background: rgba(0,0,0,0.4);
-                  border-top: 1px solid rgba(255,255,255,0.05);
-              }
-          `;
-          document.head.appendChild(style);
+            scanI32(targetVal) {
+                if (!this.ok()) return [];
+                const results = [];
+                const i32 = this.i32();
+                const len = i32.length;
+                for (let i = 0; i < len; i++) {
+                    if (i32[i] === targetVal) {
+                        results.push(i << 2);
+                    }
+                }
+                return results;
+            }
+        };
 
-          // 4. INJECT UI HTML
-          const menu = document.createElement('div');
-          menu.id = 'fr-ultimate-menu';
-          menu.innerHTML = `
-              <div class="fr-header" id="fr-drag-handle">
-                  <h3>⚡ Snow Rider Mod Menu</h3>
-                  <div id="fr-connection-status" class="fr-status">WASM: Scanning...</div>
-              </div>
-              <div class="fr-tabs">
-                  <div class="fr-tab active" data-tab="tab-player">🏃‍♂️ Player</div>
-                  <div class="fr-tab" data-tab="tab-game">🎁 Game</div>
-                  <div class="fr-tab" data-tab="tab-cheats">🔥 Cheats</div>
-              </div>
-              <div class="fr-content">
-                  <!-- TAB 1: PLAYER PHYSICS -->
-                  <div id="tab-player" class="fr-panel active">
-                      <div class="fr-row">
-                          <label>Move Speed:</label>
-                          <input type="number" id="srmm-movespeed" value="10" step="0.5">
-                      </div>
-                      <div class="fr-row">
-                          <label>Jump Multiplier:</label>
-                          <input type="number" id="srmm-jump" value="1" step="0.1">
-                      </div>
-                      <button class="fr-btn" id="srmm-apply-player">Apply Player Stats</button>
-                  </div>
-                  <!-- TAB 2: GAMEPLAY -->
-                  <div id="tab-game" class="fr-panel">
-                      <div class="fr-row">
-                          <label>Gifts Count:</label>
-                          <input type="number" id="srmm-gifts" value="0">
-                      </div>
-                      <div class="fr-row">
-                          <label>Score Multiplier:</label>
-                          <input type="number" id="srmm-score" value="1" step="1">
-                      </div>
-                      <button class="fr-btn" id="srmm-apply-game">Apply Game Stats</button>
-                  </div>
-                  <!-- TAB 3: CHEATS -->
-                  <div id="tab-cheats" class="fr-panel">
-                      <button class="fr-btn cheat-btn" id="cheat-godmode">🛡️ Toggle Infinite Speed</button>
-                      <button class="fr-btn cheat-btn" id="cheat-maxgifts">🎁 Maximize Gifts</button>
-                  </div>
-              </div>
-              <div class="fr-footer">Press [ M ] to Hide / Show Menu</div>
-          `;
+        // 3. INJECT STYLES (Cyberpunk Theme)
+        const style = document.createElement('style');
+        style.textContent = `
+            #fr-ultimate-menu {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                width: 360px;
+                max-height: 88vh;
+                background: rgba(12, 15, 23, 0.96);
+                backdrop-filter: blur(16px);
+                border: 1px solid #00f0ff;
+                border-radius: 12px;
+                color: #f0f0f0;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+                box-shadow: 0 10px 40px rgba(0, 240, 255, 0.3);
+                z-index: 9999999;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                user-select: none;
+            }
+            .fr-header {
+                padding: 12px;
+                background: rgba(0, 240, 255, 0.12);
+                border-bottom: 1px solid rgba(0, 240, 255, 0.3);
+                text-align: center;
+                cursor: move;
+            }
+            .fr-header h3 {
+                margin: 0;
+                font-size: 14px;
+                color: #00f0ff;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+            }
+            .fr-status {
+                font-size: 10px;
+                color: #888;
+                margin-top: 3px;
+            }
+            .fr-status.connected { color: #00ffcc; }
+            .fr-tabs {
+                display: flex;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                background: rgba(0,0,0,0.4);
+            }
+            .fr-tab {
+                flex: 1;
+                padding: 8px 4px;
+                font-size: 10px;
+                text-align: center;
+                cursor: pointer;
+                color: #888;
+                border-bottom: 2px solid transparent;
+                transition: all 0.2s;
+            }
+            .fr-tab.active {
+                color: #00f0ff;
+                border-bottom-color: #00f0ff;
+                background: rgba(0, 240, 255, 0.05);
+                font-weight: bold;
+            }
+            .fr-content {
+                padding: 12px;
+                overflow-y: auto;
+                flex-grow: 1;
+                max-height: 65vh;
+            }
+            .fr-panel { display: none; }
+            .fr-panel.active { display: block; }
+            .fr-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+                font-size: 11px;
+            }
+            .fr-row label { color: #bbb; flex: 1; }
+            .fr-row input[type="number"], .fr-row select {
+                width: 120px;
+                background: #161922;
+                border: 1px solid #333;
+                color: #00ffcc;
+                padding: 4px;
+                border-radius: 4px;
+                font-size: 11px;
+                text-align: right;
+            }
+            .fr-btn {
+                width: 100%;
+                padding: 8px;
+                margin-top: 6px;
+                background: #00f0ff;
+                color: #080a0f;
+                border: none;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 11px;
+                cursor: pointer;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .fr-btn:hover { background: #00c8d6; }
+            .fr-btn.cheat-btn {
+                background: linear-gradient(135deg, #ff0055, #ff5500);
+                color: #fff;
+                margin-bottom: 6px;
+            }
+            .fr-btn.cheat-btn:hover { opacity: 0.9; }
+            .fr-log {
+                background: #080a0f;
+                border: 1px solid #222;
+                padding: 6px;
+                font-family: monospace;
+                font-size: 9px;
+                color: #00ffcc;
+                height: 70px;
+                overflow-y: auto;
+                margin-top: 8px;
+                border-radius: 4px;
+            }
+            .fr-footer {
+                padding: 8px;
+                font-size: 9px;
+                color: #666;
+                text-align: center;
+                background: rgba(0,0,0,0.4);
+                border-top: 1px solid rgba(255,255,255,0.05);
+            }
+        `;
+        document.head.appendChild(style);
 
-          function attachWhenReady() {
-              if (document.body) {
-                  document.body.appendChild(menu);
-                  initMenuLogic();
-              } else {
-                  setTimeout(attachWhenReady, 50);
-              }
-          }
-          attachWhenReady();
+        // 4. INJECT FULL UI
+        const menu = document.createElement('div');
+        menu.id = 'fr-ultimate-menu';
+        menu.innerHTML = `
+            <div class="fr-header" id="fr-drag-handle">
+                <h3>⚡ Snow Rider Mod Menu</h3>
+                <div id="fr-connection-status" class="fr-status">WASM: Scanning...</div>
+            </div>
+            <div class="fr-tabs">
+                <div class="fr-tab active" data-tab="tab-player">🏃‍♂️ Player</div>
+                <div class="fr-tab" data-tab="tab-game">🎁 Game</div>
+                <div class="fr-tab" data-tab="tab-scanner">🔍 Scanner</div>
+                <div class="fr-tab" data-tab="tab-cheats">🔥 Cheats</div>
+            </div>
+            <div class="fr-content">
+                <!-- TAB 1: PLAYER -->
+                <div id="tab-player" class="fr-panel active">
+                    <div class="fr-row">
+                        <label>Movement Speed:</label>
+                        <input type="number" id="srmm-movespeed" value="15" step="0.5">
+                    </div>
+                    <div class="fr-row">
+                        <label>Jump Multiplier:</label>
+                        <input type="number" id="srmm-jump" value="1.5" step="0.1">
+                    </div>
+                    <button class="fr-btn" id="srmm-apply-player">Apply Player Stats</button>
+                </div>
+                <!-- TAB 2: GAMEPLAY -->
+                <div id="tab-game" class="fr-panel">
+                    <div class="fr-row">
+                        <label>Gifts Count:</label>
+                        <input type="number" id="srmm-gifts" value="999">
+                    </div>
+                    <div class="fr-row">
+                        <label>Score Multiplier:</label>
+                        <input type="number" id="srmm-score" value="5" step="1">
+                    </div>
+                    <button class="fr-btn" id="srmm-apply-game">Apply Game Stats</button>
+                </div>
+                <!-- TAB 3: SCANNER -->
+                <div id="tab-scanner" class="fr-panel">
+                    <div class="fr-row">
+                        <label>Search Value:</label>
+                        <input type="number" id="srmm-scan-val" value="100">
+                    </div>
+                    <div class="fr-row">
+                        <label>Data Type:</label>
+                        <select id="srmm-scan-type">
+                            <option value="f32">Float32</option>
+                            <option value="i32">Int32</option>
+                        </select>
+                    </div>
+                    <button class="fr-btn" id="srmm-do-scan">Run Memory Scan</button>
+                    <div id="srmm-scan-log" class="fr-log">Scanner ready. Enter a value and scan heap.</div>
+                </div>
+                <!-- TAB 4: CHEATS -->
+                <div id="tab-cheats" class="fr-panel">
+                    <button class="fr-btn cheat-btn" id="cheat-godmode">🛡️ Toggle Speed Hack / Godmode</button>
+                    <button class="fr-btn cheat-btn" id="cheat-maxgifts">🎁 Maximize All Gifts</button>
+                </div>
+            </div>
+            <div class="fr-footer">Press [ M ] to Hide / Show Menu</div>
+        `;
 
-          // 5. LOGIC & TAB BINDING
-          function initMenuLogic() {
-              // Tab switching
-              const tabs = menu.querySelectorAll('.fr-tab');
-              tabs.forEach(tab => {
-                  tab.addEventListener('click', () => {
-                      tabs.forEach(t => t.classList.remove('active'));
-                      menu.querySelectorAll('.fr-panel').forEach(p => p.classList.remove('active'));
-                      tab.classList.add('active');
-                      menu.getElementById(tab.dataset.tab).classList.add('active');
-                  });
-              });
+        function attachWhenReady() {
+            if (document.body) {
+                document.body.appendChild(menu);
+                initMenuLogic();
+            } else {
+                setTimeout(attachWhenReady, 50);
+            }
+        }
+        attachWhenReady();
 
-              // Update status ticker
-              setInterval(() => {
-                  const statusEl = document.getElementById('fr-connection-status');
-                  if (Mem.ok()) {
-                      statusEl.textContent = "WASM: Connected & Active";
-                      statusEl.className = "fr-status connected";
-                  } else {
-                      statusEl.textContent = "WASM: Waiting for runtime...";
-                      statusEl.className = "fr-status";
-                  }
-              }, 1000);
+        // 5. LOGIC & FUNCTIONALITY BINDING
+        function initMenuLogic() {
+            // Tab switching
+            const tabs = menu.querySelectorAll('.fr-tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    menu.querySelectorAll('.fr-panel').forEach(p => p.classList.remove('active'));
+                    tab.classList.add('active');
+                    menu.querySelector(`#${tab.dataset.tab}`).classList.add('active');
+                });
+            });
 
-              // Keybind [ M ] toggle
-              window.addEventListener('keydown', (e) => {
-                  if (e.key.toLowerCase() === 'm' && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) {
-                      menu.style.display = menu.style.display === 'none' ? 'flex' : 'none';
-                  }
-              });
-          }
-      })();
+            // Connection status loop
+            setInterval(() => {
+                const statusEl = document.getElementById('fr-connection-status');
+                if (Mem.ok()) {
+                    statusEl.textContent = `WASM: Active (${(Mem.byteLength() / 1024 / 1024).toFixed(1)} MB)`;
+                    statusEl.className = "fr-status connected";
+                } else {
+                    statusEl.textContent = "WASM: Waiting for runtime...";
+                    statusEl.className = "fr-status";
+                }
+            }, 1000);
+
+            // Keybind [ M ] toggle
+            window.addEventListener('keydown', (e) => {
+                if (e.key.toLowerCase() === 'm' && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) {
+                    menu.style.display = menu.style.display === 'none' ? 'flex' : 'none';
+                }
+            });
+
+            // Scanner action
+            document.getElementById('srmm-do-scan').addEventListener('click', () => {
+                const log = document.getElementById('srmm-scan-log');
+                if (!Mem.ok()) {
+                    log.textContent = "Error: WASM memory not active yet.";
+                    return;
+                }
+                const val = parseFloat(document.getElementById('srmm-scan-val').value);
+                const type = document.getElementById('srmm-scan-type').value;
+                let results = [];
+
+                if (type === 'f32') {
+                    results = Mem.scanF32(val);
+                } else {
+                    results = Mem.scanI32(parseInt(val, 10));
+                }
+
+                if (results.length > 0) {
+                    log.textContent = `Found ${results.length} matches. First 5 offsets:\n` + 
+                        results.slice(0, 5).map(addr => `0x${addr.toString(16)} (val: ${type === 'f32' ? Mem.readF32(addr) : Mem.readI32(addr)})`).join('\n');
+                } else {
+                    log.textContent = `No matches found for ${val} (${type}).`;
+                }
+            });
+
+            // Apply Player Stats button hook
+            document.getElementById('srmm-apply-player').addEventListener('click', () => {
+                const speed = parseFloat(document.getElementById('srmm-movespeed').value);
+                const log = document.getElementById('srmm-scan-log');
+                if (!Mem.ok()) return;
+                // Example heuristic scan & write for speed
+                const matches = Mem.scanF32(10.0, 2.0);
+                matches.forEach(addr => Mem.writeF32(addr, speed));
+                log.textContent = `Applied speed multiplier to ${matches.length} memory addresses.`;
+            });
+
+            // Maximize Gifts button hook
+            document.getElementById('cheat-maxgifts').addEventListener('click', () => {
+                const giftsVal = parseInt(document.getElementById('srmm-gifts').value, 10);
+                if (!Mem.ok()) return;
+                const matches = Mem.scanI32(0); // Common pattern for zeroed counters
+                matches.forEach(addr => {
+                    if (addr % 4 === 0) Mem.writeI32(addr, giftsVal);
+                });
+                document.getElementById('srmm-scan-log').textContent = `Injected gift count (${giftsVal}) across potential slots.`;
+            });
+        }
+    })();
       function ko(e, t) {
         return 0 == t
           ? e > 0
