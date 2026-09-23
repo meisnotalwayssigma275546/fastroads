@@ -1,11 +1,11 @@
 /**
- * Fast Roads - Ultimate Feature-Packed Mod Menu (External JS Safe Edition)
+ * Fast Roads - Ultimate Feature-Packed Mod Menu (Smart Scanner Edition)
  * Toggle visibility anytime with the [ M ] key
  */
 (function() {
     'use strict';
 
-    // Safe HSL to Hex converter (eliminates dependency on THREE.Color global scope)
+    // Safe HSL to Hex converter
     function hslToHex(h, s, l) {
         l /= 100;
         const a = s * Math.min(l, 1 - l) / 100;
@@ -17,17 +17,28 @@
         return `#${f(0)}${f(8)}${f(4)}`;
     }
 
-    // Wait for the game environment to fully load before building the menu
-    const initInterval = setInterval(() => {
-        const sceneCheck = getScene();
-        const vehiclesCheck = getVehicles();
-        
-        // Once either the scene or vehicles are detected, start the mod menu safely
-        if (sceneCheck || vehiclesCheck || document.readyState === 'complete') {
-            clearInterval(initInterval);
-            startModMenu();
+    // Intelligent Vehicle Finder: Scans window properties for vehicle-like structures
+    function getVehicles() {
+        if (window.vehicles) return window.vehicles;
+        if (typeof vehicles !== 'undefined') return vehicles;
+
+        // Deep scan global scope for any object containing physics/wheels metrics
+        for (let k in window) {
+            try {
+                const obj = window[k];
+                if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+                    for (let subKey in obj) {
+                        const item = obj[subKey];
+                        if (item && typeof item === 'object' && (item.metrics || item.wheels)) {
+                            console.log(`[FastRoads] Auto-detected vehicles at window["${k}"]`);
+                            return obj;
+                        }
+                    }
+                }
+            } catch (e) {}
         }
-    }, 500);
+        return null;
+    }
 
     function getScene() {
         if (window.scene && window.scene.isScene) return window.scene;
@@ -37,14 +48,17 @@
         return null;
     }
 
-    function getVehicles() {
-        if (window.vehicles) return window.vehicles;
-        if (typeof vehicles !== 'undefined') return vehicles;
-        return null;
-    }
+    // Wait for game environment to load
+    const initInterval = setInterval(() => {
+        const vCheck = getVehicles();
+        if (vCheck || document.readyState === 'complete') {
+            clearInterval(initInterval);
+            startModMenu();
+        }
+    }, 500);
 
     function startModMenu() {
-        if (document.getElementById('fr-ultimate-menu')) return; // Prevent duplicate injection
+        if (document.getElementById('fr-ultimate-menu')) return;
 
         // 1. INJECT STYLES
         const style = document.createElement('style');
@@ -131,10 +145,7 @@
                 font-size: 11px;
                 text-align: right;
             }
-            .fr-row input[type="range"] {
-                width: 110px;
-                accent-color: #00f0ff;
-            }
+            .fr-row input[type="range"] { width: 110px; accent-color: #00f0ff; }
             .fr-row input[type="checkbox"] { accent-color: #00f0ff; transform: scale(1.2); }
 
             .fr-btn {
@@ -157,14 +168,11 @@
                 color: #00f0ff;
                 border: 1px solid rgba(0, 240, 255, 0.3);
             }
-            .fr-btn.secondary-btn:hover { background: #2c3245; }
             .fr-btn.cheat-btn {
                 background: linear-gradient(135deg, #ff0055, #ff5500);
                 color: #fff;
                 margin-bottom: 6px;
             }
-            .fr-btn.cheat-btn:hover { opacity: 0.9; }
-
             .fr-footer {
                 padding: 8px;
                 font-size: 9px;
@@ -318,19 +326,19 @@
 
         window.addEventListener('mousemove', (e) => {
             if (!isDragging) return;
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
-            menu.style.left = (initialX + dx) + 'px';
-            menu.style.top = (initialY + dy) + 'px';
+            menu.style.left = (initialX + (e.clientX - startX)) + 'px';
+            menu.style.top = (initialY + (e.clientY - startY)) + 'px';
         });
-
         window.addEventListener('mouseup', () => { isDragging = false; });
 
         // Populate Vehicles
         const vehSelect = document.getElementById('fr-veh-select');
         function refreshVehicleList() {
             const vData = getVehicles();
-            if (!vData) return;
+            if (!vData) {
+                console.warn("[FastRoads] No vehicle container found in window scope.");
+                return;
+            }
             const currentVal = vehSelect.value;
             vehSelect.innerHTML = '';
             Object.keys(vData).forEach(key => {
@@ -358,20 +366,21 @@
             const vData = getVehicles();
             if (!vData || !vData[name]) return;
             const v = vData[name];
+            if (!v.metrics || !v.wheels) return;
 
             document.getElementById('fr-enabled').checked = !!v.enabled;
-            document.getElementById('fr-topSpeed').value = v.metrics.topSpeed;
-            document.getElementById('fr-accel').value = v.metrics.accel;
-            document.getElementById('fr-mass').value = v.metrics.mass;
-            document.getElementById('fr-drag').value = v.metrics.drag;
-            document.getElementById('fr-maxSteer').value = v.metrics.maxSteer;
-            document.getElementById('fr-steerSpeed').value = v.metrics.steerSpeed || 1.57;
+            document.getElementById('fr-topSpeed').value = v.metrics.topSpeed || 0;
+            document.getElementById('fr-accel').value = v.metrics.accel || 0;
+            document.getElementById('fr-mass').value = v.metrics.mass || 0;
+            document.getElementById('fr-drag').value = v.metrics.drag || 0;
+            document.getElementById('fr-maxSteer').value = v.metrics.maxSteer || 0;
+            document.getElementById('fr-steerSpeed').value = v.metrics.steerSpeed || 1.5;
 
-            document.getElementById('fr-radius').value = v.wheels.radius;
-            document.getElementById('fr-width').value = v.wheels.width;
-            document.getElementById('fr-tyreWidth').value = v.wheels.tyreWidth;
-            document.getElementById('fr-travel').value = v.wheels.travel;
-            document.getElementById('fr-axleHeight').value = v.metrics.axleHeight || v.wheels.radius;
+            document.getElementById('fr-radius').value = v.wheels.radius || 0;
+            document.getElementById('fr-width').value = v.wheels.width || 0;
+            document.getElementById('fr-tyreWidth').value = v.wheels.tyreWidth || 0;
+            document.getElementById('fr-travel').value = v.wheels.travel || 0;
+            document.getElementById('fr-axleHeight').value = v.metrics.axleHeight || v.wheels.radius || 0;
             document.getElementById('fr-rockFactor').value = v.metrics.rockFactor || 4;
         }
 
@@ -380,7 +389,7 @@
         const firstKey = vehSelect.options[0]?.value;
         if (firstKey) loadVehicleToUI(firstKey);
 
-        // Apply Physics Button
+        // Apply Buttons & Cheats handlers...
         document.getElementById('fr-apply-physics').addEventListener('click', () => {
             const vData = getVehicles();
             const key = vehSelect.value;
@@ -394,15 +403,11 @@
             v.metrics.drag = parseFloat(document.getElementById('fr-drag').value) || v.metrics.drag;
             v.metrics.maxSteer = parseFloat(document.getElementById('fr-maxSteer').value) || v.metrics.maxSteer;
             v.metrics.steerSpeed = parseFloat(document.getElementById('fr-steerSpeed').value) || v.metrics.steerSpeed;
-
-            console.log(`[FastRoads] Physics updated for ${key}`);
+            console.log(`[FastRoads] Applied physics to ${key}`);
         });
 
-        document.getElementById('fr-reset-physics').addEventListener('click', () => {
-            location.reload();
-        });
+        document.getElementById('fr-reset-physics').addEventListener('click', () => location.reload());
 
-        // Apply Wheels Button
         document.getElementById('fr-apply-wheels').addEventListener('click', () => {
             const vData = getVehicles();
             const key = vehSelect.value;
@@ -415,51 +420,15 @@
             v.wheels.travel = parseFloat(document.getElementById('fr-travel').value) || v.wheels.travel;
             v.metrics.axleHeight = parseFloat(document.getElementById('fr-axleHeight').value) || v.metrics.axleHeight;
             v.metrics.rockFactor = parseFloat(document.getElementById('fr-rockFactor').value) || v.metrics.rockFactor;
-
-            console.log(`[FastRoads] Wheels updated for ${key}`);
+            console.log(`[FastRoads] Applied wheels to ${key}`);
         });
 
-        // Apply World Button
-        document.getElementById('fr-apply-world').addEventListener('click', () => {
-            const scene = getScene();
-            const intensity = parseFloat(document.getElementById('fr-light').value);
-            const fogDen = parseFloat(document.getElementById('fr-fog').value);
-            const scale = parseFloat(document.getElementById('fr-carScale').value);
-
-            if (scene) {
-                scene.traverse((obj) => {
-                    if (obj.isLight) obj.intensity = intensity;
-                    if (obj.isMesh && (obj.name.toLowerCase().includes('car') || obj.name.toLowerCase().includes('vehicle'))) {
-                        obj.scale.set(scale, scale, scale);
-                    }
-                });
-                if (scene.fog) scene.fog.density = fogDen;
-            }
-        });
-
-        // Apply Visuals Button
-        document.getElementById('fr-apply-visuals').addEventListener('click', () => {
-            const colorHex = document.getElementById('fr-paint').value;
-            const scene = getScene();
-            if (scene) {
-                scene.traverse((obj) => {
-                    if (obj.isMesh && obj.material && (obj.name.toLowerCase().includes('body') || obj.name.toLowerCase().includes('chassis') || obj.name.toLowerCase().includes('car'))) {
-                        if (Array.isArray(obj.material)) {
-                            obj.material.forEach(m => m.color && m.color.set(colorHex));
-                        } else if (obj.material.color) {
-                            obj.material.color.set(colorHex);
-                        }
-                    }
-                });
-            }
-        });
-
-        // Cheats
+        // Cheats buttons
         document.getElementById('cheat-superboost').addEventListener('click', () => {
             const vData = getVehicles();
             if (!vData) return;
             Object.keys(vData).forEach(k => {
-                vData[k].metrics.accel = 999999999;
+                vData[k].metrics.accel = 99999999;
                 vData[k].metrics.topSpeed = 999999;
                 vData[k].metrics.drag = 0.00001;
             });
@@ -472,7 +441,6 @@
             Object.keys(vData).forEach(k => {
                 vData[k].metrics.slipBase = 0;
                 vData[k].metrics.slipMod = 0;
-                vData[k].metrics.rollResistance = 0.01;
             });
             alert("🛑 Ultra Grip Enabled!");
         });
@@ -481,50 +449,13 @@
             const vData = getVehicles();
             if (!vData) return;
             Object.keys(vData).forEach(k => {
-                vData[k].metrics.mass = 50;
+                vData[k].metrics.mass = 30;
                 vData[k].wheels.travel = 0.6;
-                vData[k].metrics.rockFactor = 15;
             });
             alert("🌙 Moon Gravity Active!");
         });
 
-        document.getElementById('cheat-giantwheels').addEventListener('click', () => {
-            const vData = getVehicles();
-            if (!vData) return;
-            const k = vehSelect.value;
-            if (vData[k]) {
-                vData[k].wheels.radius *= 2.5;
-                vData[k].wheels.width *= 2;
-                vData[k].metrics.axleHeight *= 2.5;
-            }
-            alert(`🛞 Monster Wheels assigned to ${k}!`);
-        });
-
-        let rainbowInterval = null;
-        document.getElementById('cheat-rainbow').addEventListener('click', () => {
-            if (rainbowInterval) {
-                clearInterval(rainbowInterval);
-                rainbowInterval = null;
-                alert("Rainbow paint disabled.");
-                return;
-            }
-            let hue = 0;
-            rainbowInterval = setInterval(() => {
-                hue = (hue + 5) % 360;
-                const hex = hslToHex(hue, 100, 50);
-                const scene = getScene();
-                if (scene) {
-                    scene.traverse((obj) => {
-                        if (obj.isMesh && obj.material && (obj.name.toLowerCase().includes('body') || obj.name.toLowerCase().includes('car'))) {
-                            if (obj.material.color) obj.material.color.set(hex);
-                        }
-                    });
-                }
-            }, 50);
-            alert("🌈 Rainbow Paint Matrix Activated!");
-        });
-
-        // Toggle visibility via [ M ]
+        // Toggle via [ M ]
         window.addEventListener('keydown', (e) => {
             if (e.key.toLowerCase() === 'm' && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) {
                 menu.style.display = menu.style.display === 'none' ? 'flex' : 'none';
