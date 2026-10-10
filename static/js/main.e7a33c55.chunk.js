@@ -1,16 +1,3 @@
-// Function to activate the leave warning
-function enableExitWarning() {
-    window.addEventListener('beforeunload', (event) => {
-        event.preventDefault();
-        event.returnValue = ''; // Required for Chrome / modern browsers
-        return '';
-    });
-}
-
-// Automatically arm the protection as soon as the user clicks or presses any key
-['click', 'keydown', 'touchstart'].forEach(eventType => {
-    window.addEventListener(eventType, enableExitWarning, { once: true });
-});
 (this.webpackJsonpapp = this.webpackJsonpapp || []).push([
   [0],
   [
@@ -28,7 +15,6 @@ function enableExitWarning() {
     ,
     ,
     ,
-    
     function (e, t, i) {
       "use strict";
       i.r(t), (t.default = i.p + "static/media/debug_body.193b9327.obj");
@@ -248,7 +234,6 @@ function enableExitWarning() {
             (this.onKeyUp = this.onKeyUpUnlocked));
         }
       })();
-      ;
       var keyMap = {
         Forward: "KeyW",
         Left: "KeyA",
@@ -3582,7 +3567,6 @@ function enableExitWarning() {
         }
         return t;
       };
-      
       var Ui = Zi;
       var Vi = {
           version: Ui,
@@ -12286,17 +12270,17 @@ function enableExitWarning() {
             metrics: {
               shadowMapSize: 4,
               steerSpeed: 1.57,
-              accel: 43287284829748273849732987492374987328972385732987589327598,
+              accel: 11,
               reverse: 5,
               jerk: 48,
               brake: 8,
-              mass: -7873975374958734895397589347657839457634785973458093487509387567849357438957438957348759734678594375893478593475,
+              mass: 700,
               steerAccel: 8,
               maxSteer: 0.4,
               dampening: 0.08,
               rockFactor: 5,
               drag: 0.001,
-              topSpeed: 959495493658374593275932753295723597238675873267582375673285627387532,
+              topSpeed: 53,
               rollResistance: 0.04,
               steerInterval: 1.8,
               slipBase: 1,
@@ -12501,7 +12485,7 @@ function enableExitWarning() {
             metrics: {
               shadowMapSize: 4,
               steerSpeed: 3.0,
-              accel: 96969696643532,
+              accel: 1500,
               reverse: 200,
               jerk: 80,
               brake: 150,
@@ -12512,7 +12496,7 @@ function enableExitWarning() {
               dampening: 0.04,
               rockFactor: 4,
               drag: 0.0001,
-              topSpeed: Number.POSITIVE_INFINITY,
+              topSpeed: 50000,
               rollResistance: 0.06,
               steerInterval: 1,
               slipBase: 0.1,
@@ -16028,7 +16012,6 @@ function enableExitWarning() {
           this.camContainer.clear(), this.camera.clear(), qr.remove(this.debug);
         }
       };
-      
       function ko(e, t) {
         return 0 == t
           ? e > 0
