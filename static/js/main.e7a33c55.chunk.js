@@ -22416,9 +22416,7 @@
             );
       };
 
-      // ==========================================
-      // [MOD HOOKS: EXPOSE ALL GAME ENGINE GLOBALS]
-      // ==========================================
+      // === [MOD HOOKS: EXPOSE ALL GAME ENGINE GLOBALS] ===
       window.THREE = r;
       window.car = z; window.z = z;
       window.game = game;
@@ -22427,10 +22425,11 @@
       window.dr = dr;
       window.jr = jr;
       window.vehicles = vehicles;
+      window.vehicleMap = vehicleMap;
       window.qr = qr; window.gameScene = qr;
       window.Be = Be;
       window.gameInput = input;
-      // ==========================================
+      // ====================================================
 
       h.a.render(
         Object(Ul.jsx)(a.a.StrictMode, { children: Object(Ul.jsx)(Lc, {}) }),

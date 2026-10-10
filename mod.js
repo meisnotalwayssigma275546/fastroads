@@ -1,14 +1,13 @@
 /**
- * Fast Roads (Slow Roads) — Mini-Blender Live CAD Studio & Mod Menu
+ * Fast Roads (Slow Roads) — Fullscreen 3D CAD Blender Studio & Mod Menu
  * Complete Standalone Script (mod.js)
  */
 
 (function () {
   "use strict";
 
-  // If already mounted, toggle visibility instead of duplicating
-  if (window.__fastRoadsHost) {
-    window.__fastRoadsHost.style.display = window.__fastRoadsHost.style.display === "none" ? "block" : "none";
+  if (window.__fastRoadsStudioHost) {
+    window.__fastRoadsStudioHost.style.display = window.__fastRoadsStudioHost.style.display === "none" ? "block" : "none";
     return;
   }
 
@@ -19,10 +18,9 @@
     car: window.car || window.z || null,
     scene: window.qr || window.gameScene || null,
     three: window.THREE || null,
-    vehicleName: "Scanning...",
+    currentType: "Roadster",
 
     scan() {
-      // 1. Resolve THREE
       if (!this.three && window.THREE) this.three = window.THREE;
       if (!this.three && window.webpackJsonpapp && Array.isArray(window.webpackJsonpapp)) {
         try {
@@ -35,33 +33,6 @@
         } catch (e) {}
       }
 
-      // 2. Resolve Scene via React Fiber or DOM
-      if (!this.scene) {
-        const canvas = document.querySelector("canvas");
-        if (canvas) {
-          const k = Object.keys(canvas).find(x => x.startsWith("__reactFiber$") || x.startsWith("__reactInternalInstance$"));
-          if (k) {
-            let fiber = canvas[k];
-            while (fiber) {
-              let hook = fiber.memoizedState;
-              while (hook) {
-                const val = hook.memoizedState?.current || hook.memoizedState;
-                if (val && val.scene && val.renderer) {
-                  this.scene = val.scene;
-                  window.qr = val.scene;
-                  if (!this.three) this.three = val.scene.constructor ? window.THREE : null;
-                  break;
-                }
-                hook = hook.next;
-              }
-              if (this.scene) break;
-              fiber = fiber.return;
-            }
-          }
-        }
-      }
-
-      // 3. Resolve Player Car
       if (window.car) {
         this.car = window.car;
       } else if (this.scene) {
@@ -73,15 +44,26 @@
         });
       }
 
-      if (this.car && this.car.metrics) {
-        this.vehicleName = this.car.metrics.name || window.jr?.value?.type || "Roadster";
+      if (window.jr && window.jr.value) {
+        this.currentType = window.jr.value.type || "Roadster";
       }
       return this.car;
+    },
+
+    setVehicleType(type) {
+      this.currentType = type;
+      if (window.jr && typeof window.jr.set === "function") {
+        window.jr.set("type", type);
+      }
+      setTimeout(() => {
+        this.scan();
+        CadStudio.rebuildVehicle();
+      }, 300);
     }
   };
   Engine.scan();
 
-  // Three.js fallback guarantee
+  // Three.js CDN fallback
   if (!Engine.three && !window.THREE) {
     const s = document.createElement("script");
     s.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
@@ -90,21 +72,22 @@
   }
 
   // =========================================================================
-  // 2. SAVED SETTINGS & STUDIO STATE
+  // 2. MOD STATE & SETTINGS
   // =========================================================================
-  const KEY = "fastroads_cad_studio_v7";
+  const KEY = "fastroads_cad_studio_v8";
   const loadSaved = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } };
   const saved = loadSaved();
 
   const S = (window.__FR_S = {
     tab: 0,
     cadTool: "select", // "select" | "move" | "scale" | "rotate" | "vertex" | "extrude" | "insert" | "paint"
+    vRegion: "all",
     bodyColor: "#00f0ff",
     wheelColor: "#ffffff",
     neonActive: true,
     neonColor: "#ff007f",
     metalness: 0.85,
-    roughness: 0.2,
+    roughness: 0.18,
 
     wheelRadius: 0.34,
     wheelWidth: 0.1,
@@ -124,7 +107,7 @@
   // 3. COMMAND PATTERN (UNDO / REDO)
   // =========================================================================
   const History = {
-    stack: [], index: -1, max: 40,
+    stack: [], index: -1, max: 50,
     execute(name, undoFn, redoFn) {
       redoFn();
       this.stack = this.stack.slice(0, this.index + 1);
@@ -150,7 +133,7 @@
   };
 
   // =========================================================================
-  // 4. CORE ENGINE INTERCEPTOR & WATCHDOG
+  // 4. CORE ENGINE REWIRING
   // =========================================================================
   const Rewire = {
     install() {
@@ -193,116 +176,130 @@
   Rewire.install();
 
   // =========================================================================
-  // 5. MINI-BLENDER 3D VIEWPORT STUDIO
+  // 5. FULLSCREEN BLENDER 3D CAD STUDIO
   // =========================================================================
-  const Studio = {
-    canvas: null, renderer: null, scene: null, camera: null,
-    clonedCar: null, clonedBody: null, clonedWheels: [],
-    neonGroup: null, neonLight: null, vertexHelpers: null,
-    selectedNode: null, customParts: [],
-    isDragging: false, dragBtn: 0,
-    prev: { x: 0, y: 0 },
-    sp: { radius: 5.5, theta: 0.75, phi: 1.15 },
+  const CadStudio = {
+    container: null,
+    canvas: null,
+    renderer: null,
+    scene: null,
+    camera: null,
+    vehicleRoot: null,
+    chassisMesh: null,
+    wheelMeshes: [],
+    customMeshes: [],
+    neonGroup: null,
+    neonLight: null,
+    vertexPoints: null,
+    selectedNode: null,
+
+    // Orbit & Pan state
+    isOrbiting: false,
+    dragButton: 0,
+    prevPointer: { x: 0, y: 0 },
+    spherical: { radius: 5.5, theta: 0.8, phi: 1.15 },
     target: null,
     raycaster: null,
     mouseVec: null,
+    isFullscreen: false,
 
-    init(containerEl) {
+    init(holderEl) {
       const THREE = Engine.three || window.THREE;
       if (!THREE) {
-        setTimeout(() => this.init(containerEl), 250);
+        setTimeout(() => this.init(holderEl), 250);
         return;
       }
 
-      this.target = new THREE.Vector3(0, 0.35, 0);
+      this.container = holderEl;
+      this.target = new THREE.Vector3(0, 0.4, 0);
       this.raycaster = new THREE.Raycaster();
       this.mouseVec = new THREE.Vector2();
 
-      const w = Math.max(containerEl.clientWidth || 640, 400);
-      const h = Math.max(containerEl.clientHeight || 340, 260);
-
       this.canvas = document.createElement("canvas");
-      this.canvas.style.cssText = "width: 100%; height: 100%; display: block; border-radius: 18px; cursor: grab;";
-      containerEl.appendChild(this.canvas);
+      this.canvas.style.cssText = "width: 100%; height: 100%; display: block; cursor: grab;";
+      this.container.appendChild(this.canvas);
 
       this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
-      this.renderer.setSize(w, h);
+      this.renderer.setSize(this.container.clientWidth || 800, this.container.clientHeight || 500);
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
       this.scene = new THREE.Scene();
-      this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+      this.camera = new THREE.PerspectiveCamera(45, (this.container.clientWidth || 800) / (this.container.clientHeight || 500), 0.1, 100);
       this.updateCamera();
 
-      // Showroom Lights
-      const amb = new THREE.AmbientLight(0xffffff, 0.9);
-      const dir1 = new THREE.DirectionalLight(0xffffff, 1.3);
-      dir1.position.set(6, 12, 8);
-      const dir2 = new THREE.DirectionalLight(0x00e5ff, 0.5);
-      dir2.position.set(-6, -4, -6);
-      this.scene.add(amb, dir1, dir2);
+      // Studio 3-Point Lighting
+      const amb = new THREE.AmbientLight(0xffffff, 0.95);
+      const key = new THREE.DirectionalLight(0xffffff, 1.3);
+      key.position.set(7, 14, 9);
+      const fill = new THREE.DirectionalLight(0x00f0ff, 0.6);
+      fill.position.set(-7, -4, -7);
+      this.scene.add(amb, key, fill);
 
-      const grid = new THREE.GridHelper(16, 32, 0x00e5ff, 0x1f2b3e);
+      const grid = new THREE.GridHelper(20, 40, 0x00f0ff, 0x1e293b);
       grid.position.y = -0.01;
       this.scene.add(grid);
 
-      this.vertexHelpers = new THREE.Group();
-      this.scene.add(this.vertexHelpers);
+      this.vertexPoints = new THREE.Group();
+      this.scene.add(this.vertexPoints);
 
       this.bindControls();
 
-      // Render Loop
-      const loop = () => {
-        requestAnimationFrame(loop);
-        if (S.tab === 0 && !body.classList.contains("hide") && this.renderer) {
-          // Guard camera matrix against NaNs
+      // Animation render loop
+      const render = () => {
+        requestAnimationFrame(render);
+        if (this.renderer && (this.isFullscreen || (S.tab === 0 && !body.classList.contains("hide")))) {
           if (isNaN(this.camera.position.x)) {
             this.camera.position.set(3, 2, 4);
-            this.camera.lookAt(0, 0.35, 0);
+            this.camera.lookAt(0, 0.4, 0);
           }
           this.renderer.render(this.scene, this.camera);
         }
       };
-      loop();
+      render();
 
       if (window.ResizeObserver) {
-        new ResizeObserver(() => {
-          const rw = containerEl.clientWidth;
-          const rh = containerEl.clientHeight;
-          if (rw > 0 && rh > 0) {
-            this.camera.aspect = rw / rh;
-            this.camera.updateProjectionMatrix();
-            this.renderer.setSize(rw, rh);
-          }
-        }).observe(containerEl);
+        new ResizeObserver(() => this.resize()).observe(this.container);
       }
 
-      this.rebuildClone();
+      this.rebuildVehicle();
+    },
+
+    resize() {
+      if (!this.renderer || !this.camera || !this.container) return;
+      const w = this.container.clientWidth;
+      const h = this.container.clientHeight;
+      if (w > 0 && h > 0) {
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(w, h);
+      }
     },
 
     updateCamera() {
       if (!this.target) return;
-      const x = this.sp.radius * Math.sin(this.sp.phi) * Math.sin(this.sp.theta);
-      const y = this.sp.radius * Math.cos(this.sp.phi);
-      const z = this.sp.radius * Math.sin(this.sp.phi) * Math.cos(this.sp.theta);
+      const x = this.spherical.radius * Math.sin(this.spherical.phi) * Math.sin(this.spherical.theta);
+      const y = this.spherical.radius * Math.cos(this.spherical.phi);
+      const z = this.spherical.radius * Math.sin(this.spherical.phi) * Math.cos(this.spherical.theta);
       this.camera.position.set(x + this.target.x, y + this.target.y, z + this.target.z);
       this.camera.lookAt(this.target);
     },
 
     setPreset(view) {
-      if (view === "persp") { this.sp.theta = 0.75; this.sp.phi = 1.15; this.sp.radius = 5.5; }
-      else if (view === "front") { this.sp.theta = Math.PI; this.sp.phi = Math.PI / 2; }
-      else if (view === "side") { this.sp.theta = Math.PI / 2; this.sp.phi = Math.PI / 2; }
-      else if (view === "top") { this.sp.theta = 0; this.sp.phi = 0.05; }
-      else if (view === "under") { this.sp.theta = 0; this.sp.phi = Math.PI - 0.15; }
+      if (view === "persp") { this.spherical.theta = 0.8; this.spherical.phi = 1.15; this.spherical.radius = 5.5; }
+      else if (view === "front") { this.spherical.theta = Math.PI; this.spherical.phi = Math.PI / 2; }
+      else if (view === "side") { this.spherical.theta = Math.PI / 2; this.spherical.phi = Math.PI / 2; }
+      else if (view === "top") { this.spherical.theta = 0; this.spherical.phi = 0.05; }
+      else if (view === "under") { this.spherical.theta = 0; this.spherical.phi = Math.PI - 0.15; }
       this.updateCamera();
     },
 
     bindControls() {
       const cv = this.canvas;
       cv.addEventListener("pointerdown", (e) => {
-        this.isDragging = true;
-        this.dragBtn = e.button;
-        this.prev.x = e.clientX; this.prev.y = e.clientY;
+        this.isOrbiting = true;
+        this.dragButton = e.button;
+        this.prevPointer.x = e.clientX;
+        this.prevPointer.y = e.clientY;
         cv.setPointerCapture(e.pointerId);
         cv.style.cursor = "grabbing";
 
@@ -311,22 +308,26 @@
           this.mouseVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
           this.mouseVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
           this.raycaster.setFromCamera(this.mouseVec, this.camera);
-          if (this.clonedCar) {
-            const hits = this.raycaster.intersectObjects(this.clonedCar.children, true);
-            if (hits.length > 0) this.select(hits[0].object);
+          if (this.vehicleRoot) {
+            const hits = this.raycaster.intersectObjects(this.vehicleRoot.children, true);
+            if (hits.length > 0) this.selectMesh(hits[0].object);
           }
         }
       });
 
       cv.addEventListener("pointermove", (e) => {
-        if (!this.isDragging) return;
-        const dx = e.clientX - this.prev.x, dy = e.clientY - this.prev.y;
-        this.prev.x = e.clientX; this.prev.y = e.clientY;
+        if (!this.isOrbiting) return;
+        const dx = e.clientX - this.prevPointer.x;
+        const dy = e.clientY - this.prevPointer.y;
+        this.prevPointer.x = e.clientX;
+        this.prevPointer.y = e.clientY;
 
-        if (this.dragBtn === 0 && !e.shiftKey) {
-          this.sp.theta -= dx * 0.012;
-          this.sp.phi = Math.max(0.04, Math.min(Math.PI - 0.04, this.sp.phi - dy * 0.012));
+        if (this.dragButton === 0 && !e.shiftKey) {
+          // Orbit Rotation
+          this.spherical.theta -= dx * 0.012;
+          this.spherical.phi = Math.max(0.04, Math.min(Math.PI - 0.04, this.spherical.phi - dy * 0.012));
         } else {
+          // Pan
           const THREE = Engine.three || window.THREE;
           const right = new THREE.Vector3().crossVectors(this.camera.up, this.camera.position).normalize();
           this.target.addScaledVector(right, -dx * 0.005);
@@ -335,38 +336,42 @@
         this.updateCamera();
       });
 
-      const stop = () => { this.isDragging = false; cv.style.cursor = "grab"; };
+      const stop = () => { this.isOrbiting = false; cv.style.cursor = "grab"; };
       cv.addEventListener("pointerup", stop);
       cv.addEventListener("pointercancel", stop);
 
       cv.addEventListener("wheel", (e) => {
         e.preventDefault();
-        this.sp.radius = Math.max(1.5, Math.min(24.0, this.sp.radius + e.deltaY * 0.005));
+        this.spherical.radius = Math.max(1.5, Math.min(26.0, this.spherical.radius + e.deltaY * 0.005));
         this.updateCamera();
       }, { passive: false });
     },
 
-    select(node) {
+    selectMesh(node) {
       this.selectedNode = node;
-      this.buildVertexHelpers();
-      updateStatus("Selected Mesh: " + (node.name || "Body"));
-      updateToolOptionsUI();
+      this.renderVertexHandles();
+      updateStatus("Selected: " + (node.name || "Chassis Mesh"));
+      renderCadToolOverlay();
+      renderOutliner();
     },
 
-    rebuildClone() {
+    rebuildVehicle() {
       const THREE = Engine.three || window.THREE;
       if (!this.scene || !THREE) return;
-      if (this.clonedCar) this.scene.remove(this.clonedCar);
+      if (this.vehicleRoot) this.scene.remove(this.vehicleRoot);
 
-      this.clonedCar = new THREE.Group();
-      this.scene.add(this.clonedCar);
-      this.clonedWheels = [];
+      this.vehicleRoot = new THREE.Group();
+      this.vehicleRoot.name = "CAD_Vehicle";
+      this.scene.add(this.vehicleRoot);
+      this.wheelMeshes = [];
 
       Engine.scan();
-      const c = Engine.car;
-      if (c && c.geo && c.geo.children.length > 0) {
-        c.geo.children.forEach((child) => {
-          if (child.name === "fl" || (child.children && child.children.some(x => x.name === "fl"))) {
+      const car = Engine.car;
+
+      // Deep Clone from the Live Game Engine Mesh Hierarchy
+      if (car && car.geo && car.geo.children.length > 0) {
+        car.geo.children.forEach((child) => {
+          if (child.name === "fl" || (child.children && child.children.some(c => c.name === "fl"))) {
             // Wheels
           } else {
             const clone = child.clone(true);
@@ -378,63 +383,80 @@
                 m.material.roughness = S.roughness;
               }
             });
-            this.clonedBody = clone;
-            this.clonedCar.add(clone);
+            this.chassisMesh = clone;
+            this.vehicleRoot.add(clone);
           }
         });
-        this.buildWheels();
+        this.assembleWheels();
       } else {
+        // High-Precision Procedural Mesh Representation
         this.buildProceduralRig();
       }
 
-      this.buildUnderglow();
-      this.customParts.forEach((p) => this.clonedCar.add(p));
-      this.select(this.clonedBody || this.clonedCar);
+      this.assembleNeon();
+      this.customMeshes.forEach(m => this.vehicleRoot.add(m));
+      this.selectMesh(this.chassisMesh || this.vehicleRoot);
+      renderOutliner();
     },
 
     buildProceduralRig() {
       const THREE = Engine.three || window.THREE;
-      const mat = new THREE.MeshStandardMaterial({ color: S.bodyColor, roughness: 0.2 });
-      const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.45, 3.2), mat);
-      bodyMesh.name = "Chassis_Body";
-      bodyMesh.position.y = 0.35;
-      this.clonedCar.add(bodyMesh);
-      this.clonedBody = bodyMesh;
+      const type = Engine.currentType;
+      const mat = new THREE.MeshStandardMaterial({ color: S.bodyColor, roughness: S.roughness, metalness: S.metalness });
 
-      const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.4, 1.6), new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 }));
-      cabin.name = "Cabin_Roof";
-      cabin.position.set(0, 0.75, -0.2);
-      this.clonedCar.add(cabin);
+      let chassisGeo, cabinGeo;
+      if (type === "Coach") {
+        chassisGeo = new THREE.BoxGeometry(2.2, 1.4, 5.5);
+        cabinGeo = new THREE.BoxGeometry(2.1, 0.4, 5.3);
+      } else if (type === "Bike") {
+        chassisGeo = new THREE.BoxGeometry(0.35, 0.5, 1.9);
+        cabinGeo = new THREE.BoxGeometry(0.25, 0.3, 0.8);
+      } else {
+        // Roadster, Lambo, Supercar
+        chassisGeo = new THREE.BoxGeometry(1.65, 0.42, 3.2);
+        cabinGeo = new THREE.BoxGeometry(1.2, 0.38, 1.6);
+      }
 
-      this.buildWheels();
+      const chassis = new THREE.Mesh(chassisGeo, mat);
+      chassis.name = type + "_Chassis";
+      chassis.position.y = 0.38;
+      this.vehicleRoot.add(chassis);
+      this.chassisMesh = chassis;
+
+      const cabin = new THREE.Mesh(cabinGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 }));
+      cabin.name = type + "_Cabin";
+      cabin.position.set(0, 0.76, -0.2);
+      this.vehicleRoot.add(cabin);
+
+      this.assembleWheels();
     },
 
-    buildWheels() {
+    assembleWheels() {
       const THREE = Engine.three || window.THREE;
       const mat = new THREE.MeshStandardMaterial({ color: S.wheelColor, metalness: 0.9, roughness: 0.15 });
       const r = S.wheelRadius, w = S.wheelWidth;
-      const geo = new THREE.CylinderGeometry(r, r, w * 2, 24);
+      const geo = new THREE.CylinderGeometry(r, r, w * 2, 28);
       geo.rotateZ(Math.PI / 2);
 
-      const pos = [
+      const positions = [
         { name: "Wheel_FL", x: S.trackWidth / 2, y: r, z: S.wheelbase / 2 },
         { name: "Wheel_FR", x: -S.trackWidth / 2, y: r, z: S.wheelbase / 2 },
         { name: "Wheel_RL", x: S.trackWidth / 2, y: r, z: -S.wheelbase / 2 },
         { name: "Wheel_RR", x: -S.trackWidth / 2, y: r, z: -S.wheelbase / 2 }
       ];
 
-      pos.forEach((p) => {
+      positions.forEach((p) => {
         const m = new THREE.Mesh(geo.clone(), mat.clone());
         m.name = p.name;
         m.position.set(p.x, p.y, p.z);
-        this.clonedCar.add(m);
-        this.clonedWheels.push(m);
+        this.vehicleRoot.add(m);
+        this.wheelMeshes.push(m);
       });
     },
 
-    buildUnderglow() {
+    assembleNeon() {
       const THREE = Engine.three || window.THREE;
-      if (this.neonGroup && this.clonedCar) this.clonedCar.remove(this.neonGroup);
+      if (this.neonGroup && this.vehicleRoot) this.vehicleRoot.remove(this.neonGroup);
       this.neonGroup = new THREE.Group();
       this.neonGroup.name = "Underglow_Neon";
 
@@ -442,47 +464,48 @@
       const geo = new THREE.CylinderGeometry(0.02, 0.02, 2.2);
       geo.rotateX(Math.PI / 2);
 
-      const left = new THREE.Mesh(geo, neonMat); left.position.set(-0.7, 0.08, 0);
-      const right = new THREE.Mesh(geo, neonMat); right.position.set(0.7, 0.08, 0);
-      this.neonLight = new THREE.PointLight(S.neonColor, 2.0, 3.5);
+      const left = new THREE.Mesh(geo, neonMat); left.position.set(-0.75, 0.08, 0);
+      const right = new THREE.Mesh(geo, neonMat); right.position.set(0.75, 0.08, 0);
+      this.neonLight = new THREE.PointLight(S.neonColor, 2.5, 4.0);
       this.neonLight.position.set(0, 0.05, 0);
 
       this.neonGroup.add(left, right, this.neonLight);
       this.neonGroup.visible = S.neonActive;
-      if (this.clonedCar) this.clonedCar.add(this.neonGroup);
+      if (this.vehicleRoot) this.vehicleRoot.add(this.neonGroup);
     },
 
-    buildVertexHelpers() {
+    renderVertexHandles() {
       const THREE = Engine.three || window.THREE;
-      while (this.vertexHelpers.children.length > 0) this.vertexHelpers.remove(this.vertexHelpers.children[0]);
+      while (this.vertexPoints.children.length > 0) this.vertexPoints.remove(this.vertexPoints.children[0]);
       if (S.cadTool !== "vertex" || !this.selectedNode || !this.selectedNode.geometry) return;
 
       const pos = this.selectedNode.geometry.attributes?.position;
       if (!pos) return;
       const mat = new THREE.MeshBasicMaterial({ color: 0x00ff88 });
-      const geo = new THREE.BoxGeometry(0.035, 0.035, 0.035);
+      const geo = new THREE.BoxGeometry(0.038, 0.038, 0.038);
 
-      for (let i = 0; i < Math.min(pos.count, 350); i++) {
+      for (let i = 0; i < Math.min(pos.count, 450); i++) {
         const h = new THREE.Mesh(geo, mat);
         h.position.set(pos.getX(i), pos.getY(i), pos.getZ(i));
         h.position.applyMatrix4(this.selectedNode.matrixWorld);
-        this.vertexHelpers.add(h);
+        this.vertexPoints.add(h);
       }
     },
 
-    displace(axis, amount, region = "all") {
+    displaceVertices(axis, amount) {
       const node = this.selectedNode;
       if (!node || !node.geometry || !node.geometry.attributes.position) return;
       const pos = node.geometry.attributes.position;
+      const reg = S.vRegion;
 
       for (let i = 0; i < pos.count; i++) {
         const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
         let pass = true;
-        if (region === "front" && z < 0) pass = false;
-        if (region === "rear" && z > 0) pass = false;
-        if (region === "top" && y < 0.2) pass = false;
-        if (region === "left" && x < 0) pass = false;
-        if (region === "right" && x > 0) pass = false;
+        if (reg === "front" && z < 0.2) pass = false;
+        if (reg === "rear" && z > -0.2) pass = false;
+        if (reg === "top" && y < 0.2) pass = false;
+        if (reg === "left" && x < 0) pass = false;
+        if (reg === "right" && x > 0) pass = false;
 
         if (pass) {
           if (axis === "x") pos.setX(i, x + amount);
@@ -493,86 +516,88 @@
       pos.needsUpdate = true;
       node.geometry.computeVertexNormals();
       node.geometry.computeBoundingBox();
-      this.buildVertexHelpers();
+      this.renderVertexHandles();
       this.pushToGame();
     },
 
-    extrudeMesh() {
+    extrudeFaces() {
       const node = this.selectedNode;
       if (!node || !node.geometry || !node.geometry.attributes.position) return;
-      const THREE = Engine.three || window.THREE;
-
-      // Deep CAD extrusion: push vertices along computed normal vectors
       const pos = node.geometry.attributes.position;
-      const norm = node.geometry.attributes.normal || node.geometry.computeVertexNormals();
 
-      History.execute("Extrude " + (node.name || "Mesh"), () => {
-        // undo
+      History.execute("Extrude Faces (" + node.name + ")", () => {
+        // Undo displacement
         for (let i = 0; i < pos.count; i++) {
-          pos.setX(i, pos.getX(i) - 0.08);
-          pos.setY(i, pos.getY(i) - 0.08);
-        }
-        pos.needsUpdate = true;
-        Studio.pushToGame();
-      }, () => {
-        // redo
-        for (let i = 0; i < pos.count; i++) {
-          pos.setX(i, pos.getX(i) + 0.08);
-          pos.setY(i, pos.getY(i) + 0.08);
+          pos.setX(i, pos.getX(i) - 0.1);
+          pos.setY(i, pos.getY(i) - 0.1);
         }
         pos.needsUpdate = true;
         node.geometry.computeVertexNormals();
-        Studio.pushToGame();
+        CadStudio.pushToGame();
+      }, () => {
+        // Redo displacement along surface
+        for (let i = 0; i < pos.count; i++) {
+          pos.setX(i, pos.getX(i) + 0.1);
+          pos.setY(i, pos.getY(i) + 0.1);
+        }
+        pos.needsUpdate = true;
+        node.geometry.computeVertexNormals();
+        CadStudio.pushToGame();
       });
-      updateStatus("Extruded " + node.name);
+      updateStatus("Extruded: " + node.name);
     },
 
-    addPrimitive(type) {
+    addCADPart(type) {
       const THREE = Engine.three || window.THREE;
       let geo, name;
       if (type === "wing") {
-        geo = new THREE.BoxGeometry(0.85, 0.08, 0.35);
-        name = "CAD_Wing_" + (this.customParts.length + 1);
-      } else if (type === "exhaust") {
-        geo = new THREE.CylinderGeometry(0.045, 0.045, 0.75, 16);
-        name = "CAD_Exhaust_" + (this.customParts.length + 1);
+        geo = new THREE.BoxGeometry(0.9, 0.07, 0.38);
+        name = "GT_Wing_" + (this.customMeshes.length + 1);
       } else if (type === "splitter") {
-        geo = new THREE.BoxGeometry(1.2, 0.05, 0.5);
-        name = "CAD_Splitter_" + (this.customParts.length + 1);
+        geo = new THREE.BoxGeometry(1.3, 0.05, 0.6);
+        name = "Aero_Splitter_" + (this.customMeshes.length + 1);
+      } else if (type === "exhaust") {
+        geo = new THREE.CylinderGeometry(0.045, 0.045, 0.8, 16);
+        name = "Exhaust_Tip_" + (this.customMeshes.length + 1);
+      } else if (type === "box") {
+        geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+        name = "CAD_Box_" + (this.customMeshes.length + 1);
       } else {
-        geo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
-        name = "CAD_Cube_" + (this.customParts.length + 1);
+        geo = new THREE.SphereGeometry(0.22, 16, 16);
+        name = "CAD_Sphere_" + (this.customMeshes.length + 1);
       }
 
-      const mat = new THREE.MeshStandardMaterial({ color: S.bodyColor, roughness: 0.2 });
+      const mat = new THREE.MeshStandardMaterial({ color: S.bodyColor, roughness: S.roughness, metalness: S.metalness });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.name = name;
       mesh.position.set(0, 0.85, -1.2);
 
       History.execute("Insert " + name, () => {
-        this.clonedCar.remove(mesh);
-        const i = this.customParts.indexOf(mesh);
-        if (i >= 0) this.customParts.splice(i, 1);
-        this.select(this.clonedBody);
+        this.vehicleRoot.remove(mesh);
+        const i = this.customMeshes.indexOf(mesh);
+        if (i >= 0) this.customMeshes.splice(i, 1);
+        this.selectMesh(this.chassisMesh);
       }, () => {
-        this.clonedCar.add(mesh);
-        this.customParts.push(mesh);
-        this.select(mesh);
+        this.vehicleRoot.add(mesh);
+        this.customMeshes.push(mesh);
+        this.selectMesh(mesh);
       });
       this.pushToGame();
     },
 
     pushToGame() {
-      const THREE = Engine.three || window.THREE;
       const c = Engine.scan();
       if (!c || !c.geo) return;
       const g = c.geo;
 
+      // Synchronize paint to game vehicle
       g.traverse((node) => {
         if (node.isMesh && node.material) {
           const n = (node.name || "").toLowerCase();
           if (n.includes("body") || n.includes("map") || node === c) {
             if (node.material.color) node.material.color.set(S.bodyColor);
+            node.material.metalness = S.metalness;
+            node.material.roughness = S.roughness;
           }
           if (n.includes("wheel") && node.material.color) {
             node.material.color.set(S.wheelColor);
@@ -580,18 +605,22 @@
         }
       });
 
-      let holder = g.getObjectByName("__mod_parts_holder__");
+      // Synchronize custom CAD models
+      let holder = g.getObjectByName("__mod_cad_parts__");
       if (!holder) {
+        const THREE = Engine.three || window.THREE;
         holder = new THREE.Group();
-        holder.name = "__mod_parts_holder__";
+        holder.name = "__mod_cad_parts__";
         g.add(holder);
       }
       while (holder.children.length > 0) holder.remove(holder.children[0]);
-      this.customParts.forEach((p) => holder.add(p.clone(true)));
+      this.customMeshes.forEach(m => holder.add(m.clone(true)));
 
+      // Synchronize underglow neon
       let neon = g.getObjectByName("__mod_neon_light__");
       if (S.neonActive) {
         if (!neon) {
+          const THREE = Engine.three || window.THREE;
           neon = new THREE.PointLight(S.neonColor, 2.5, 4.0);
           neon.name = "__mod_neon_light__";
           neon.position.set(0, 0.1, 0);
@@ -602,6 +631,7 @@
         g.remove(neon);
       }
 
+      // Synchronize vehicle dimensions
       if (c.wheels) {
         c.wheels.radius = S.wheelRadius;
         c.wheels.width = S.trackWidth;
@@ -612,12 +642,12 @@
   };
 
   // =========================================================================
-  // 6. UI CONSTRUCTION (EXACT LIQUID GLASS DESIGN)
+  // 6. UI CONSTRUCTION & STYLING (LIQUID GLASS + FULLSCREEN CAD)
   // =========================================================================
   const host = document.createElement("div");
   host.id = "fastroads-cad-host";
   host.style.cssText = "position:fixed;top:40px;left:20px;z-index:2147483647;";
-  window.__fastRoadsHost = host;
+  window.__fastRoadsStudioHost = host;
 
   [
     "mousedown","mouseup","mousemove","click","dblclick","touchstart","touchmove","touchend","touchcancel",
@@ -628,68 +658,150 @@
   const spring = "cubic-bezier(.34,1.56,.64,1)";
   const MONO = "ui-monospace,Menlo,Consolas,monospace";
 
-  const css = [
-    ".p{position:relative;width:720px;color:#000;font:13px -apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif;border-radius:34px;",
-    "background:linear-gradient(135deg,rgba(255,255,255,.26),rgba(255,255,255,.08));",
-    "-webkit-backdrop-filter:blur(16px) saturate(190%) brightness(1.08);",
-    "backdrop-filter:blur(16px) saturate(190%) brightness(1.08);",
-    "backdrop-filter:url(#lgfilter) blur(6px) saturate(190%) brightness(1.08);",
-    "box-shadow:0 22px 60px rgba(0,0,0,.4),0 2px 8px rgba(0,0,0,.2),inset 0 0 0 1px rgba(255,255,255,.2),inset 0 1px 1px rgba(255,255,255,.65);",
-    "transition:transform .6s " + spring + ",width .5s " + spring + ";user-select:none;overflow:hidden;will-change:transform}",
-    ".p::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1.5px;pointer-events:none;z-index:3;",
-    "background:linear-gradient(140deg,rgba(255,255,255,.95),rgba(255,255,255,.08) 28%,rgba(255,255,255,.04) 62%,rgba(255,255,255,.7));",
-    "-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}",
-    ".p::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0;",
-    "background:radial-gradient(240px circle at var(--mx,30%) var(--my,0%),rgba(255,255,255,.28),rgba(255,255,255,0) 65%)}",
-    ".h,.b{position:relative;z-index:1}",
-    ".h{padding:14px 18px 10px;display:flex;justify-content:space-between;align-items:center;cursor:grab;touch-action:none;font-weight:700;font-size:14.5px;letter-spacing:.2px;text-shadow:0 1px 6px rgba(0,0,0,.1)}",
-    ".dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#34c759;margin-left:8px;vertical-align:middle;box-shadow:0 0 8px #34c759}",
-    ".win-btns{display:flex;align-items:center;gap:6px;}",
-    ".min{width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:linear-gradient(160deg,rgba(255,255,255,.35),rgba(255,255,255,.1));box-shadow:inset 0 1px 1px rgba(255,255,255,.6);color:#000;font-size:15px;line-height:24px;text-align:center;cursor:pointer;padding:0;transition:transform .3s " + spring + "}",
-    ".min:hover{transform:scale(1.1)}",
-    ".min:active{transform:scale(.9)}",
-    ".b{padding:2px 14px 16px;display:flex;flex-direction:column;gap:10px}",
-    ".b.hide{display:none !important}",
-    ".tabs{position:relative;display:flex;padding:3px;border-radius:18px;background:rgba(0,0,0,.22);box-shadow:inset 0 1px 3px rgba(0,0,0,.25),0 1px 0 rgba(255,255,255,.2)}",
-    ".tab{flex:1;text-align:center;padding:8px 0;font-weight:600;font-size:12px;cursor:pointer;position:relative;z-index:1;opacity:.7;transition:opacity .25s,transform .4s " + spring + "}",
-    ".tab.on{opacity:1}",
-    ".ind{position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px) / 3);border-radius:15px;background:linear-gradient(160deg,rgba(255,255,255,.42),rgba(255,255,255,.14));box-shadow:inset 0 1px 1px rgba(255,255,255,.7),0 2px 8px rgba(0,0,0,.2);transition:transform .55s " + spring + "}",
-    ".tabs.t1 .ind{transform:translateX(100%)}",
-    ".tabs.t2 .ind{transform:translateX(200%)}",
-    ".pg{display:flex;flex-direction:column;gap:10px;animation:pgin .45s " + spring + "}",
-    ".pg.hide{display:none}",
-    "@keyframes pgin{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:none}}",
-    ".card{background:linear-gradient(160deg,rgba(255,255,255,.2),rgba(255,255,255,.06));border-radius:24px;padding:11px 13px;box-shadow:inset 0 1px 1px rgba(255,255,255,.5),inset 0 0 0 1px rgba(255,255,255,.12),0 4px 14px rgba(0,0,0,.12);display:flex;flex-direction:column;gap:8px;}",
-    ".row{display:flex;align-items:center;justify-content:space-between;gap:10px}",
-    ".lbl{font-weight:600}",
-    ".lbl small{display:block;opacity:.75;font-size:10.5px;font-weight:400;margin-top:1px}",
-    ".step{display:flex;align-items:center;gap:2px;background:rgba(0,0,0,.22);border-radius:16px;padding:3px;box-shadow:inset 0 1px 3px rgba(0,0,0,.25),0 1px 0 rgba(255,255,255,.2)}",
-    ".step button{width:28px;height:28px;border:0;border-radius:13px;background:linear-gradient(160deg,rgba(255,255,255,.34),rgba(255,255,255,.12));box-shadow:inset 0 1px 1px rgba(255,255,255,.6);color:#000;font-size:17px;line-height:26px;cursor:pointer;padding:0;transition:transform .4s " + spring + "}",
-    ".step input{width:46px;text-align:center;background:transparent;border:0;color:#000;font:700 13px -apple-system,system-ui,sans-serif;outline:none;padding:0}",
-    ".sw{width:50px;height:30px;border-radius:15px;background:rgba(255,255,255,.2);box-shadow:inset 0 1px 3px rgba(0,0,0,.28),0 1px 0 rgba(255,255,255,.25);position:relative;cursor:pointer;transition:background .3s;flex:none}",
-    ".sw i{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:12px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:transform .45s " + spring + "}",
-    ".sw.on{background:rgba(52,199,89,.9)}",
-    ".sw.on i{transform:translateX(20px)}",
-    
-    // Blender Viewport & CAD Tool Overlays
-    ".viewport-frame{position:relative;width:100%;height:360px;border-radius:20px;background:radial-gradient(circle at center,#1e293b 0%,#090d16 100%);overflow:hidden;box-shadow:inset 0 0 12px rgba(0,0,0,.8);}",
-    ".blender-shelf{position:absolute;top:10px;left:10px;display:flex;gap:4px;z-index:10;background:rgba(0,0,0,.6);padding:4px;border-radius:12px;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.18);}",
-    ".tool-btn{background:transparent;border:0;color:#cbd5e1;font-size:11px;font-weight:600;padding:5px 9px;border-radius:8px;cursor:pointer;transition:background .2s;}",
-    ".tool-btn:hover{background:rgba(255,255,255,.15);color:#fff;}",
-    ".tool-btn.active{background:#00f0ff;color:#000;font-weight:700;box-shadow:0 0 10px #00f0ff;}",
-    ".tool-options-bar{position:absolute;bottom:10px;left:10px;right:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;z-index:10;background:rgba(0,0,0,.65);padding:7px 12px;border-radius:14px;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.18);color:#fff;font-size:11.5px;}",
-    ".vp-presets{position:absolute;top:10px;right:10px;display:flex;gap:4px;z-index:10;}",
-    ".vp-preset-btn{background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:10px;padding:3px 7px;border-radius:6px;cursor:pointer;backdrop-filter:blur(6px);}",
-    ".rbtn{border:0;border-radius:12px;padding:5px 11px;background:linear-gradient(160deg,rgba(255,255,255,.34),rgba(255,255,255,.12));box-shadow:inset 0 1px 1px rgba(255,255,255,.6);color:#000;font:600 11.5px -apple-system,system-ui,sans-serif;cursor:pointer;}",
-    ".srch input{width:100%;height:32px;background:rgba(0,0,0,.22);border:0;border-radius:16px;padding:0 13px;color:#000;font:12.5px -apple-system,system-ui,sans-serif;outline:none;box-sizing:border-box;}",
-    ".tbl{position:relative;height:240px;overflow-y:auto;border-radius:18px;background:rgba(0,0,0,.2);box-shadow:inset 0 1px 3px rgba(0,0,0,.28);}",
-    ".tr{height:30px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid rgba(255,255,255,.07);}",
-    ".nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:11px " + MONO + ";}",
-    ".tr input{width:110px;background:rgba(255,255,255,.15);border:0;border-radius:8px;padding:4px 6px;color:#000;font:600 11px " + MONO + ";text-align:right;outline:none;}",
-    "input[type='color']{-webkit-appearance:none;border:none;width:32px;height:24px;border-radius:8px;cursor:pointer;background:transparent;}",
-    "input[type='color']::-webkit-color-swatch{border-radius:8px;border:1px solid rgba(0,0,0,.2);}",
-    ".status{font:11px " + MONO + ";opacity:.85;min-height:13px;padding:0 6px}"
-  ].join("");
+  const css = `
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    .p {
+      position: relative; width: 440px; color: #000; font: 13px -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      border-radius: 34px; background: linear-gradient(135deg, rgba(255,255,255,.24), rgba(255,255,255,.08));
+      -webkit-backdrop-filter: blur(14px) saturate(190%) brightness(1.08);
+      backdrop-filter: blur(14px) saturate(190%) brightness(1.08);
+      backdrop-filter: url(#lgfilter) blur(6px) saturate(190%) brightness(1.08);
+      box-shadow: 0 18px 50px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.2), inset 0 0 0 1px rgba(255,255,255,.18), inset 0 1px 1px rgba(255,255,255,.6);
+      transition: transform .6s ${spring}, width .5s ${spring}; user-select: none; overflow: hidden;
+    }
+    .p::before {
+      content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none; z-index: 3;
+      background: linear-gradient(140deg, rgba(255,255,255,.95), rgba(255,255,255,.08) 28%, rgba(255,255,255,.04) 62%, rgba(255,255,255,.7));
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+    }
+    .p::after {
+      content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
+      background: radial-gradient(230px circle at var(--mx,30%) var(--my,0%), rgba(255,255,255,.26), rgba(255,255,255,0) 62%);
+    }
+    .h, .b { position: relative; z-index: 1; }
+    .h {
+      padding: 15px 18px 9px; display: flex; justify-content: space-between; align-items: center;
+      cursor: grab; touch-action: none; font-weight: 700; font-size: 14.5px; letter-spacing: .2px; text-shadow: 0 1px 6px rgba(0,0,0,.1);
+    }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #34c759; margin-left: 8px; vertical-align: middle; box-shadow: 0 0 8px #34c759; }
+    .win-btns { display: flex; align-items: center; gap: 6px; }
+    .min {
+      width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255,255,255,.4);
+      background: linear-gradient(160deg, rgba(255,255,255,.35), rgba(255,255,255,.1));
+      box-shadow: inset 0 1px 1px rgba(255,255,255,.6); color: #000; font-size: 15px; line-height: 24px;
+      text-align: center; cursor: pointer; padding: 0; transition: transform .3s ${spring};
+    }
+    .min:hover { transform: scale(1.1); }
+    .min:active { transform: scale(.9); }
+    .b { padding: 2px 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .b.hide { display: none !important; }
+
+    /* Tabs */
+    .tabs { position: relative; display: flex; padding: 3px; border-radius: 18px; background: rgba(0,0,0,.22); box-shadow: inset 0 1px 3px rgba(0,0,0,.25), 0 1px 0 rgba(255,255,255,.2); }
+    .tab { flex: 1; text-align: center; padding: 8px 0; font-weight: 600; font-size: 12px; cursor: pointer; position: relative; z-index: 1; opacity: .7; transition: opacity .25s, transform .4s ${spring}; }
+    .tab.on { opacity: 1; }
+    .ind {
+      position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 3); border-radius: 15px;
+      background: linear-gradient(160deg, rgba(255,255,255,.42), rgba(255,255,255,.14));
+      box-shadow: inset 0 1px 1px rgba(255,255,255,.7), 0 2px 8px rgba(0,0,0,.2); transition: transform .55s ${spring};
+    }
+    .tabs.t1 .ind { transform: translateX(100%); }
+    .tabs.t2 .ind { transform: translateX(200%); }
+    .pg { display: flex; flex-direction: column; gap: 10px; animation: pgin .45s ${spring}; }
+    .pg.hide { display: none; }
+    @keyframes pgin { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
+
+    /* Cards & Components */
+    .card {
+      background: linear-gradient(160deg, rgba(255,255,255,.2), rgba(255,255,255,.06)); border-radius: 24px;
+      padding: 11px 13px; box-shadow: inset 0 1px 1px rgba(255,255,255,.5), inset 0 0 0 1px rgba(255,255,255,.12), 0 4px 14px rgba(0,0,0,.12);
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .lbl { font-weight: 600; font-size: 12.5px; }
+    .lbl small { display: block; opacity: .75; font-size: 10.5px; font-weight: 400; margin-top: 1px; }
+
+    .step { display: flex; align-items: center; gap: 2px; background: rgba(0,0,0,.22); border-radius: 16px; padding: 3px; box-shadow: inset 0 1px 3px rgba(0,0,0,.25), 0 1px 0 rgba(255,255,255,.2); }
+    .step button {
+      width: 28px; height: 28px; border: 0; border-radius: 13px; background: linear-gradient(160deg, rgba(255,255,255,.34), rgba(255,255,255,.12));
+      box-shadow: inset 0 1px 1px rgba(255,255,255,.6); color: #000; font-size: 17px; line-height: 26px; cursor: pointer; padding: 0;
+      transition: transform .4s ${spring};
+    }
+    .step input { width: 46px; text-align: center; background: transparent; border: 0; color: #000; font: 700 13px -apple-system, system-ui, sans-serif; outline: none; padding: 0; }
+
+    .sw { width: 50px; height: 30px; border-radius: 15px; background: rgba(255,255,255,.2); box-shadow: inset 0 1px 3px rgba(0,0,0,.28), 0 1px 0 rgba(255,255,255,.25); position: relative; cursor: pointer; transition: background .3s; flex: none; }
+    .sw i { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 12px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); transition: transform .45s ${spring}; }
+    .sw.on { background: rgba(52,199,89,.9); }
+    .sw.on i { transform: translateX(20px); }
+
+    .rbtn {
+      border: 0; border-radius: 14px; padding: 6px 14px; background: linear-gradient(160deg, rgba(255,255,255,.38), rgba(255,255,255,.14));
+      box-shadow: inset 0 1px 1px rgba(255,255,255,.6), 0 2px 6px rgba(0,0,0,.15); color: #000; font: 600 12px -apple-system, system-ui, sans-serif;
+      cursor: pointer; transition: transform .2s ${spring};
+    }
+    .rbtn:hover { transform: scale(1.04); }
+    .rbtn.launch {
+      width: 100%; padding: 12px; font-size: 13.5px; font-weight: 700; color: #fff;
+      background: linear-gradient(135deg, #0ea5e9, #0284c7); box-shadow: 0 4px 16px rgba(2,132,199,.4);
+    }
+
+    select.glass-select {
+      background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.3); border-radius: 14px; padding: 5px 12px;
+      color: #000; font-weight: 600; font-size: 12px; outline: none; cursor: pointer;
+    }
+
+    /* FULLSCREEN BLENDER WORKSPACE MODAL */
+    .cad-modal {
+      position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 1000000;
+      background: #0f172a; color: #f1f5f9; display: flex; flex-direction: column; user-select: none;
+    }
+    .cad-modal.hidden { display: none; }
+    .cad-topbar {
+      height: 48px; background: #1e293b; border-bottom: 1px solid rgba(255,255,255,.1);
+      display: flex; align-items: center; justify-content: space-between; padding: 0 16px; flex: none;
+    }
+    .cad-body { flex: 1; display: flex; overflow: hidden; position: relative; }
+    .cad-viewport { flex: 1; height: 100%; position: relative; background: radial-gradient(circle at center, #1e293b 0%, #090d16 100%); }
+
+    /* Floating Viewport Overlays */
+    .cad-tool-shelf {
+      position: absolute; top: 12px; left: 12px; display: flex; gap: 4px; z-index: 20;
+      background: rgba(15, 23, 42, 0.75); padding: 5px; border-radius: 12px; backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,.15);
+    }
+    .tool-btn {
+      background: transparent; border: 0; color: #94a3b8; font-size: 12px; font-weight: 600;
+      padding: 6px 10px; border-radius: 8px; cursor: pointer; transition: all .2s;
+    }
+    .tool-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+    .tool-btn.active { background: #00f0ff; color: #000; font-weight: 700; box-shadow: 0 0 12px #00f0ff; }
+
+    .cad-tool-options {
+      position: absolute; bottom: 12px; left: 12px; right: 12px; display: flex; align-items: center;
+      justify-content: space-between; gap: 8px; z-index: 20; background: rgba(15, 23, 42, 0.85);
+      padding: 8px 16px; border-radius: 14px; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.15);
+      font-size: 12px;
+    }
+
+    .cad-outliner-panel {
+      width: 280px; height: 100%; background: #1e293b; border-left: 1px solid rgba(255,255,255,.1);
+      display: flex; flex-direction: column; padding: 12px; gap: 10px; overflow-y: auto; flex: none;
+    }
+    .outliner-title { font-size: 11px; text-transform: uppercase; font-weight: 700; color: #64748b; letter-spacing: .6px; }
+    .mesh-tree { background: rgba(0,0,0,.3); border-radius: 10px; padding: 4px; max-height: 220px; overflow-y: auto; }
+    .mesh-item { padding: 5px 8px; border-radius: 6px; font-size: 11.5px; cursor: pointer; display: flex; justify-content: space-between; }
+    .mesh-item:hover { background: rgba(255,255,255,.08); }
+    .mesh-item.active { background: rgba(0,240,255,.2); border: 1px solid rgba(0,240,255,.5); color: #00f0ff; font-weight: 700; }
+
+    .cad-btn {
+      background: #334155; border: 1px solid rgba(255,255,255,.15); color: #fff; font-size: 11.5px;
+      font-weight: 600; padding: 5px 10px; border-radius: 8px; cursor: pointer; transition: background .2s;
+    }
+    .cad-btn:hover { background: #475569; }
+    .cad-btn.danger { background: #dc2626; border-color: #ef4444; }
+
+    .status { font: 11px ${MONO}; opacity: .85; min-height: 13px; padding: 0 6px; }
+  `;
 
   const el = (tag, props, kids) => {
     const n = document.createElement(tag);
@@ -701,12 +813,13 @@
   const svgs = [];
   const mkSvg = () => {
     const d = document.createElement("div");
-    d.innerHTML =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;pointer-events:none">' +
-      '<defs><filter id="lgfilter" filterUnits="userSpaceOnUse" x="0" y="0" width="720" height="700" color-interpolation-filters="sRGB">' +
-      '<feImage x="0" y="0" width="720" height="700" preserveAspectRatio="none" result="map"/>' +
-      '<feDisplacementMap in="SourceGraphic" in2="map" scale="36" xChannelSelector="R" yChannelSelector="G"/>' +
-      '</filter></defs></svg>';
+    d.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;pointer-events:none">
+        <defs><filter id="lgfilter" filterUnits="userSpaceOnUse" x="0" y="0" width="700" height="700" color-interpolation-filters="sRGB">
+          <feImage x="0" y="0" width="700" height="700" preserveAspectRatio="none" result="map"/>
+          <feDisplacementMap in="SourceGraphic" in2="map" scale="36" xChannelSelector="R" yChannelSelector="G"/>
+        </filter></defs>
+      </svg>`;
     const s = d.firstChild; svgs.push(s); return s;
   };
 
@@ -745,9 +858,8 @@
     titleText,
     el("div", { className: "win-btns" }, [minBtn, closeBtn])
   ]);
-  const status = el("div", { className: "status", textContent: "Ready" });
-
-  const updateStatus = (txt) => { status.textContent = txt; };
+  const status = el("div", { className: "status", textContent: "Engine Ready" });
+  const updateStatus = (t) => { status.textContent = t; };
 
   const stepper = (init, min, max, onSet) => {
     const input = el("input", { type: "number", min, max, step: "any", value: init });
@@ -777,131 +889,45 @@
   };
 
   // =========================================================================
-  // TAB 0: BLENDER CAD STUDIO VIEWPORT
+  // TAB 0: MINI MENU CONTROLS & CAD LAUNCHER
   // =========================================================================
-  const viewportFrame = el("div", { className: "viewport-frame" });
-
-  // Floating Blender Tool Shelf inside Viewport
-  const toolBtns = {};
-  const setCadTool = (tool) => {
-    S.cadTool = tool;
-    Object.keys(toolBtns).forEach(k => toolBtns[k].classList.toggle("active", k === tool));
-    updateToolOptionsUI();
-    Studio.buildVertexHelpers();
+  const vehicleDropdown = el("select", { className: "glass-select" });
+  ["Roadster", "Coach", "Bike", "Lambo", "Supercar"].forEach(type => {
+    const opt = el("option", { value: type, textContent: type });
+    if (type === Engine.currentType) opt.selected = true;
+    vehicleDropdown.appendChild(opt);
+  });
+  vehicleDropdown.onchange = (e) => {
+    Engine.setVehicleType(e.target.value);
   };
 
-  const mkToolBtn = (id, label) => {
-    const b = el("button", { className: "tool-btn" + (S.cadTool === id ? " active" : ""), textContent: label });
-    b.onclick = () => setCadTool(id);
-    toolBtns[id] = b;
-    return b;
-  };
-
-  const blenderShelf = el("div", { className: "blender-shelf" }, [
-    mkToolBtn("select", "🖐 Select"),
-    mkToolBtn("move", "✥ Move"),
-    mkToolBtn("scale", "⤢ Scale"),
-    mkToolBtn("rotate", "⟳ Rotate"),
-    mkToolBtn("vertex", "⚬ Vertices"),
-    mkToolBtn("extrude", "⇪ Extrude"),
-    mkToolBtn("insert", "➕ Insert"),
-    mkToolBtn("paint", "🎨 Paint")
-  ]);
-
-  const vpPresets = el("div", { className: "vp-presets" }, [
-    el("button", { className: "vp-preset-btn", textContent: "Persp", onclick: () => Studio.setPreset("persp") }),
-    el("button", { className: "vp-preset-btn", textContent: "Front", onclick: () => Studio.setPreset("front") }),
-    el("button", { className: "vp-preset-btn", textContent: "Side", onclick: () => Studio.setPreset("side") }),
-    el("button", { className: "vp-preset-btn", textContent: "Top", onclick: () => Studio.setPreset("top") }),
-    el("button", { className: "vp-preset-btn", textContent: "Under", onclick: () => Studio.setPreset("under") })
-  ]);
-
-  const toolOptionsBar = el("div", { className: "tool-options-bar" });
-
-  viewportFrame.appendChild(blenderShelf);
-  viewportFrame.appendChild(vpPresets);
-  viewportFrame.appendChild(toolOptionsBar);
-
-  const updateToolOptionsUI = () => {
-    toolOptionsBar.innerHTML = "";
-    const node = Studio.selectedNode;
-
-    if (S.cadTool === "select") {
-      toolOptionsBar.appendChild(el("span", {}, ["Click mesh in 3D to inspect. Selected: " + (node?.name || "None")]));
-      toolOptionsBar.appendChild(el("button", { className: "rbtn", textContent: "Sync to Car", onclick: () => Studio.pushToGame() }));
-    } else if (S.cadTool === "move") {
-      toolOptionsBar.appendChild(el("span", {}, ["Move X/Y/Z:"]));
-      [-0.1, 0.1].forEach(amt => {
-        const bx = el("button", { className: "rbtn", textContent: (amt > 0 ? "+X" : "-X"), onclick: () => { if (node) { node.position.x += amt; Studio.pushToGame(); } } });
-        const by = el("button", { className: "rbtn", textContent: (amt > 0 ? "+Y" : "-Y"), onclick: () => { if (node) { node.position.y += amt; Studio.pushToGame(); } } });
-        const bz = el("button", { className: "rbtn", textContent: (amt > 0 ? "+Z" : "-Z"), onclick: () => { if (node) { node.position.z += amt; Studio.pushToGame(); } } });
-        toolOptionsBar.appendChild(bx); toolOptionsBar.appendChild(by); toolOptionsBar.appendChild(bz);
-      });
-    } else if (S.cadTool === "scale") {
-      toolOptionsBar.appendChild(el("span", {}, ["Scale Size:"]));
-      [-0.1, 0.1].forEach(amt => {
-        const bs = el("button", { className: "rbtn", textContent: (amt > 0 ? "+ Scale" : "- Scale"), onclick: () => { if (node) { node.scale.multiplyScalar(1 + amt); Studio.pushToGame(); } } });
-        toolOptionsBar.appendChild(bs);
-      });
-    } else if (S.cadTool === "rotate") {
-      toolOptionsBar.appendChild(el("span", {}, ["Rotate Pitch/Yaw:"]));
-      const rx = el("button", { className: "rbtn", textContent: "Pitch +15°", onclick: () => { if (node) { node.rotation.x += 0.26; Studio.pushToGame(); } } });
-      const ry = el("button", { className: "rbtn", textContent: "Yaw +15°", onclick: () => { if (node) { node.rotation.y += 0.26; Studio.pushToGame(); } } });
-      toolOptionsBar.appendChild(rx); toolOptionsBar.appendChild(ry);
-    } else if (S.cadTool === "vertex") {
-      toolOptionsBar.appendChild(el("span", {}, ["Deform Buffer:"]));
-      const bf = el("button", { className: "rbtn", textContent: "Extend Bumper (+Z)", onclick: () => Studio.displace("z", 0.08, "front") });
-      const br = el("button", { className: "rbtn", textContent: "Pull Rear (-Z)", onclick: () => Studio.displace("z", -0.08, "rear") });
-      const bt = el("button", { className: "rbtn", textContent: "Chop Roof (-Y)", onclick: () => Studio.displace("y", -0.06, "top") });
-      toolOptionsBar.appendChild(bf); toolOptionsBar.appendChild(br); toolOptionsBar.appendChild(bt);
-    } else if (S.cadTool === "extrude") {
-      toolOptionsBar.appendChild(el("span", {}, ["Extrude Surface Outward:"]));
-      const be = el("button", { className: "rbtn", textContent: "⇪ Extrude Selection", onclick: () => Studio.extrudeMesh() });
-      toolOptionsBar.appendChild(be);
-    } else if (S.cadTool === "insert") {
-      toolOptionsBar.appendChild(el("span", {}, ["Insert Part:"]));
-      const bw = el("button", { className: "rbtn", textContent: "+ GT Wing", onclick: () => Studio.addPrimitive("wing") });
-      const bx = el("button", { className: "rbtn", textContent: "+ Dual Exhaust", onclick: () => Studio.addPrimitive("exhaust") });
-      const bs = el("button", { className: "rbtn", textContent: "+ Splitter", onclick: () => Studio.addPrimitive("splitter") });
-      toolOptionsBar.appendChild(bw); toolOptionsBar.appendChild(bx); toolOptionsBar.appendChild(bs);
-    } else if (S.cadTool === "paint") {
-      toolOptionsBar.appendChild(el("span", {}, ["Body:"]));
-      const cInp = el("input", { type: "color", value: S.bodyColor });
-      cInp.oninput = (e) => { S.bodyColor = e.target.value; Studio.rebuildClone(); Studio.pushToGame(); };
-      toolOptionsBar.appendChild(cInp);
-
-      toolOptionsBar.appendChild(el("span", {}, ["Neon:"]));
-      const nInp = el("input", { type: "color", value: S.neonColor });
-      nInp.oninput = (e) => { S.neonColor = e.target.value; Studio.buildUnderglow(); Studio.pushToGame(); };
-      toolOptionsBar.appendChild(nInp);
-    }
-  };
+  const launchCadBtn = el("button", { className: "rbtn launch", textContent: "⛶ Open Fullscreen CAD Studio" });
 
   const page0 = el("div", { className: "pg" }, [
-    viewportFrame,
     el("div", { className: "card" }, [
       el("div", { className: "row" }, [
-        el("div", { className: "lbl" }, ["Cad Undo / Redo Actions", el("small", {}, ["Revert transforms, vertices, and inserts"])]),
-        el("div", { style: "display:flex;gap:6px;" }, [
-          el("button", { className: "rbtn", textContent: "↶ Undo", onclick: () => History.undo() }),
-          el("button", { className: "rbtn", textContent: "↷ Redo", onclick: () => History.redo() })
-        ])
+        el("div", { className: "lbl" }, ["Vehicle Model Selector", el("small", {}, ["Switch model & load geometry directly"])]),
+        vehicleDropdown
       ])
+    ]),
+    el("div", { className: "card" }, [
+      launchCadBtn,
+      el("small", { style: "text-align:center;color:#64748b;font-weight:600;margin-top:4px;" }, ["Launches full-screen Blender 3D CAD modeling studio"])
     ])
   ]);
 
   // =========================================================================
-  // TAB 1: VEHICLE TUNING & CORE PHYSICS
+  // TAB 1: PHYSICS & TUNING
   // =========================================================================
   const pwrStep = stepper(S.enginePower, 1.0, 20.0, (v) => { S.enginePower = v; });
   const gravStep = stepper(S.gravityY, -40.0, 10.0, (v) => { S.gravityY = v; });
-  const radStep = stepper(S.wheelRadius, 0.2, 0.6, (v) => { S.wheelRadius = v; Studio.rebuildClone(); Studio.pushToGame(); });
-  const baseStep = stepper(S.wheelbase, 1.5, 4.5, (v) => { S.wheelbase = v; Studio.rebuildClone(); Studio.pushToGame(); });
+  const radStep = stepper(S.wheelRadius, 0.2, 0.6, (v) => { S.wheelRadius = v; CadStudio.rebuildVehicle(); CadStudio.pushToGame(); });
+  const baseStep = stepper(S.wheelbase, 1.5, 4.5, (v) => { S.wheelbase = v; CadStudio.rebuildVehicle(); CadStudio.pushToGame(); });
 
   const page1 = el("div", { className: "pg hide" }, [
     el("div", { className: "card" }, [
       el("div", { className: "row" }, [
-        el("div", { className: "lbl" }, ["Engine Power Mult", el("small", {}, ["Scales acceleration & top speed"])]),
+        el("div", { className: "lbl" }, ["Engine Power Multiplier", el("small", {}, ["Scales acceleration & maximum velocity"])]),
         pwrStep.wrap
       ]),
       el("div", { className: "row" }, [
@@ -911,7 +937,7 @@
     ]),
     el("div", { className: "card" }, [
       el("div", { className: "row" }, [
-        el("div", { className: "lbl" }, ["Wheel Radius", el("small", {}, ["Physical wheel collision circle"])]),
+        el("div", { className: "lbl" }, ["Wheel Tire Radius", el("small", {}, ["Physical wheel collision circle"])]),
         radStep.wrap
       ]),
       el("div", { className: "row" }, [
@@ -921,25 +947,25 @@
     ]),
     el("div", { className: "card" }, [
       el("div", { className: "row" }, [
-        el("div", { className: "lbl" }, ["Barrier No-Clip Bypass", el("small", {}, ["Disables wall collision forces"])]),
+        el("div", { className: "lbl" }, ["Barrier No-Clip Bypass", el("small", {}, ["Ignore wall collision blocks"])]),
         mkSwitch(S.noClip, (v) => { S.noClip = v; })
       ]),
       el("div", { className: "row" }, [
-        el("div", { className: "lbl" }, ["Infinite Nitrous Boost", el("small", {}, ["Forward velocity boost tick"])]),
+        el("div", { className: "lbl" }, ["Infinite Boost / Nitrous", el("small", {}, ["Continuous forward velocity acceleration"])]),
         mkSwitch(S.infiniteBoost, (v) => { S.infiniteBoost = v; })
       ]),
       el("div", { className: "row" }, [
-        el("div", { className: "lbl" }, ["Anti-Drift Tire Grip", el("small", {}, ["Locks lateral tire friction to 100%"])]),
+        el("div", { className: "lbl" }, ["Anti-Drift Tire Grip", el("small", {}, ["Locks lateral slip to 100%"])]),
         mkSwitch(S.infiniteGrip, (v) => { S.infiniteGrip = v; })
       ])
     ])
   ]);
 
   // =========================================================================
-  // TAB 2: ADVANCED MEMORY INSPECTOR
+  // TAB 2: INTERNALS INSPECTOR
   // =========================================================================
   const searchIn = el("input", { type: "text", placeholder: "Search engine property path..." });
-  const scroller = el("div", { className: "tbl" });
+  const scroller = el("div", { style: "height:240px;overflow-y:auto;background:rgba(0,0,0,.2);border-radius:18px;padding:4px;" });
 
   const renderTable = () => {
     scroller.innerHTML = "";
@@ -971,13 +997,13 @@
     if (car.wheels) walk("Wheels", car.wheels);
 
     rows.slice(0, 60).forEach((item) => {
-      const inp = el("input", { value: String(item.val) });
+      const inp = el("input", { value: String(item.val), style: "width:110px;background:rgba(255,255,255,.15);border:0;border-radius:8px;padding:4px;color:#000;font:11px monospace;" });
       inp.onchange = () => {
         const n = Number(inp.value);
         item.obj[item.key] = isNaN(n) ? inp.value : n;
       };
-      const row = el("div", { className: "tr" }, [
-        el("div", { className: "nm", title: item.path }, [item.path]),
+      const row = el("div", { style: "display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.08);" }, [
+        el("div", { style: "font:11px monospace;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", title: item.path }, [item.path]),
         inp
       ]);
       scroller.appendChild(row);
@@ -985,16 +1011,10 @@
   };
 
   searchIn.oninput = renderTable;
+  const page2 = el("div", { className: "pg hide" }, [searchIn, scroller]);
 
-  const page2 = el("div", { className: "pg hide" }, [
-    el("div", { className: "srch" }, [searchIn]),
-    scroller
-  ]);
-
-  // =========================================================================
-  // TABS & WINDOW SHELL
-  // =========================================================================
-  const tabA = el("div", { className: "tab on", textContent: "3D CAD Studio" });
+  // Tab Manager
+  const tabA = el("div", { className: "tab on", textContent: "Studio" });
   const tabB = el("div", { className: "tab", textContent: "Physics" });
   const tabC = el("div", { className: "tab", textContent: "Internals" });
   const tabs = el("div", { className: "tabs" }, [el("div", { className: "ind" }), tabA, tabB, tabC]);
@@ -1005,13 +1025,7 @@
     tabs.classList.toggle("t2", i === 2);
     [tabA, tabB, tabC].forEach((t, j) => t.classList.toggle("on", j === i));
     [page0, page1, page2].forEach((p, j) => p.classList.toggle("hide", j !== i));
-    setTimeout(updateMap, 60);
-
-    if (i === 0) {
-      setTimeout(() => Studio.setPreset("persp"), 100);
-    } else if (i === 2) {
-      renderTable();
-    }
+    if (i === 2) renderTable();
   };
 
   tabA.onclick = () => setTab(0);
@@ -1021,25 +1035,183 @@
   const body = el("div", { className: "b" }, [tabs, page0, page1, page2, status]);
   const panel = el("div", { className: "p" }, [head, body]);
 
+  // =========================================================================
+  // 7. FULLSCREEN BLENDER WORKSPACE MODAL
+  // =========================================================================
+  const cadModal = el("div", { className: "cad-modal hidden" });
+  const cadViewport = el("div", { className: "cad-viewport" });
+  const cadOutliner = el("div", { className: "cad-outliner-panel" });
+
+  const exitCadBtn = el("button", { className: "cad-btn danger", textContent: "✕ Exit Studio", style: "font-weight:700;" });
+  exitCadBtn.onclick = () => {
+    CadStudio.isFullscreen = false;
+    cadModal.classList.add("hidden");
+    host.style.display = "block";
+  };
+
+  const syncCadBtn = el("button", { className: "cad-btn", textContent: "✓ Sync to Live Car" });
+  syncCadBtn.onclick = () => {
+    CadStudio.pushToGame();
+    updateStatus("Synced to game vehicle!");
+  };
+
+  const topbar = el("div", { className: "cad-topbar" }, [
+    el("div", { style: "display:flex;align-items:center;gap:12px;" }, [
+      el("span", { style: "font-weight:700;color:#00f0ff;" }, ["FAST ROADS 3D CAD STUDIO"]),
+      el("span", { style: "color:#64748b;" }, ["|"]),
+      el("span", { id: "cad-active-veh", style: "font-weight:600;" }, ["Model: " + Engine.currentType])
+    ]),
+    el("div", { style: "display:flex;align-items:center;gap:8px;" }, [
+      el("button", { className: "cad-btn", textContent: "↶ Undo", onclick: () => History.undo() }),
+      el("button", { className: "cad-btn", textContent: "↷ Redo", onclick: () => History.redo() }),
+      syncCadBtn,
+      exitCadBtn
+    ])
+  ]);
+
+  // Blender-style tool overlays
+  const toolBtns = {};
+  const setCadTool = (t) => {
+    S.cadTool = t;
+    Object.keys(toolBtns).forEach(k => toolBtns[k].classList.toggle("active", k === t));
+    renderCadToolOverlay();
+    CadStudio.renderVertexHandles();
+  };
+
+  const mkToolBtn = (id, label) => {
+    const b = el("button", { className: "tool-btn" + (S.cadTool === id ? " active" : ""), textContent: label });
+    b.onclick = () => setCadTool(id);
+    toolBtns[id] = b;
+    return b;
+  };
+
+  const toolShelf = el("div", { className: "cad-tool-shelf" }, [
+    mkToolBtn("select", "🖐 Select"),
+    mkToolBtn("move", "✥ Move"),
+    mkToolBtn("scale", "⤢ Scale"),
+    mkToolBtn("rotate", "⟳ Rotate"),
+    mkToolBtn("vertex", "⚬ Vertices"),
+    mkToolBtn("extrude", "⇪ Extrude"),
+    mkToolBtn("insert", "➕ Insert"),
+    mkToolBtn("paint", "🎨 Paint")
+  ]);
+
+  const toolOptionsBar = el("div", { className: "cad-tool-options" });
+
+  cadViewport.appendChild(toolShelf);
+  cadViewport.appendChild(toolOptionsBar);
+
+  const renderCadToolOverlay = () => {
+    toolOptionsBar.innerHTML = "";
+    const node = CadStudio.selectedNode;
+
+    if (S.cadTool === "select") {
+      toolOptionsBar.appendChild(el("span", {}, ["Click any part in 3D to inspect. Selected: " + (node?.name || "None")]));
+    } else if (S.cadTool === "move") {
+      toolOptionsBar.appendChild(el("span", {}, ["Nudge Coordinates (X, Y, Z):"]));
+      [-0.1, 0.1].forEach(amt => {
+        const bx = el("button", { className: "cad-btn", textContent: amt > 0 ? "+X" : "-X", onclick: () => { if (node) { node.position.x += amt; CadStudio.pushToGame(); } } });
+        const by = el("button", { className: "cad-btn", textContent: amt > 0 ? "+Y" : "-Y", onclick: () => { if (node) { node.position.y += amt; CadStudio.pushToGame(); } } });
+        const bz = el("button", { className: "cad-btn", textContent: amt > 0 ? "+Z" : "-Z", onclick: () => { if (node) { node.position.z += amt; CadStudio.pushToGame(); } } });
+        toolOptionsBar.appendChild(bx); toolOptionsBar.appendChild(by); toolOptionsBar.appendChild(bz);
+      });
+    } else if (S.cadTool === "scale") {
+      toolOptionsBar.appendChild(el("span", {}, ["Scale Size:"]));
+      [-0.1, 0.1].forEach(amt => {
+        const bs = el("button", { className: "cad-btn", textContent: amt > 0 ? "+ Scale" : "- Scale", onclick: () => { if (node) { node.scale.multiplyScalar(1 + amt); CadStudio.pushToGame(); } } });
+        toolOptionsBar.appendChild(bs);
+      });
+    } else if (S.cadTool === "rotate") {
+      toolOptionsBar.appendChild(el("span", {}, ["Rotate Pitch/Yaw:"]));
+      const rx = el("button", { className: "cad-btn", textContent: "Pitch +15°", onclick: () => { if (node) { node.rotation.x += 0.26; CadStudio.pushToGame(); } } });
+      const ry = el("button", { className: "cad-btn", textContent: "Yaw +15°", onclick: () => { if (node) { node.rotation.y += 0.26; CadStudio.pushToGame(); } } });
+      toolOptionsBar.appendChild(rx); toolOptionsBar.appendChild(ry);
+    } else if (S.cadTool === "vertex") {
+      toolOptionsBar.appendChild(el("span", {}, ["Vertex Region:"]));
+      const regSelect = el("select", { className: "cad-btn" });
+      ["all", "front", "rear", "top", "left", "right"].forEach(r => {
+        const o = el("option", { value: r, textContent: r.toUpperCase() });
+        if (r === S.vRegion) o.selected = true;
+        regSelect.appendChild(o);
+      });
+      regSelect.onchange = (e) => { S.vRegion = e.target.value; };
+      toolOptionsBar.appendChild(regSelect);
+
+      const bzP = el("button", { className: "cad-btn", textContent: "+Z Nudge", onclick: () => CadStudio.displaceVertices("z", 0.08) });
+      const bzM = el("button", { className: "cad-btn", textContent: "-Z Nudge", onclick: () => CadStudio.displaceVertices("z", -0.08) });
+      const byM = el("button", { className: "cad-btn", textContent: "-Y Chop", onclick: () => CadStudio.displaceVertices("y", -0.08) });
+      toolOptionsBar.appendChild(bzP); toolOptionsBar.appendChild(bzM); toolOptionsBar.appendChild(byM);
+    } else if (S.cadTool === "extrude") {
+      toolOptionsBar.appendChild(el("span", {}, ["Extrude Surface Geometry Outward:"]));
+      const be = el("button", { className: "cad-btn", textContent: "⇪ Extrude Selection", style: "background:#00f0ff;color:#000;font-weight:700;", onclick: () => CadStudio.extrudeFaces() });
+      toolOptionsBar.appendChild(be);
+    } else if (S.cadTool === "insert") {
+      toolOptionsBar.appendChild(el("span", {}, ["Insert Custom Part:"]));
+      const bw = el("button", { className: "cad-btn", textContent: "+ GT Wing", onclick: () => CadStudio.addCADPart("wing") });
+      const bs = el("button", { className: "cad-btn", textContent: "+ Splitter", onclick: () => CadStudio.addCADPart("splitter") });
+      const bx = el("button", { className: "cad-btn", textContent: "+ Exhaust", onclick: () => CadStudio.addCADPart("exhaust") });
+      const bb = el("button", { className: "cad-btn", textContent: "+ Cube", onclick: () => CadStudio.addCADPart("box") });
+      toolOptionsBar.appendChild(bw); toolOptionsBar.appendChild(bs); toolOptionsBar.appendChild(bx); toolOptionsBar.appendChild(bb);
+    } else if (S.cadTool === "paint") {
+      toolOptionsBar.appendChild(el("span", {}, ["Chassis Paint:"]));
+      const cInp = el("input", { type: "color", value: S.bodyColor });
+      cInp.oninput = (e) => { S.bodyColor = e.target.value; CadStudio.rebuildVehicle(); CadStudio.pushToGame(); };
+      toolOptionsBar.appendChild(cInp);
+
+      toolOptionsBar.appendChild(el("span", {}, ["Neon Underglow:"]));
+      const nInp = el("input", { type: "color", value: S.neonColor });
+      nInp.oninput = (e) => { S.neonColor = e.target.value; CadStudio.assembleNeon(); CadStudio.pushToGame(); };
+      toolOptionsBar.appendChild(nInp);
+    }
+  };
+
+  // Right Outliner Panel in CAD Studio
+  const outlinerMeshTree = el("div", { className: "mesh-tree" });
+  cadOutliner.appendChild(el("div", { className: "outliner-title", textContent: "Scene Outliner" }));
+  cadOutliner.appendChild(outlinerMeshTree);
+
+  const renderOutliner = () => {
+    outlinerMeshTree.innerHTML = "";
+    if (!CadStudio.vehicleRoot) return;
+
+    const makeItem = (node) => {
+      const it = el("div", {
+        className: "mesh-item" + (CadStudio.selectedNode === node ? " active" : ""),
+        textContent: node.name || "Mesh"
+      });
+      it.onclick = () => CadStudio.selectMesh(node);
+      return it;
+    };
+
+    if (CadStudio.chassisMesh) outlinerMeshTree.appendChild(makeItem(CadStudio.chassisMesh));
+    CadStudio.wheelMeshes.forEach(w => outlinerMeshTree.appendChild(makeItem(w)));
+    CadStudio.customMeshes.forEach(m => outlinerMeshTree.appendChild(makeItem(m)));
+  };
+
+  const cadBody = el("div", { className: "cad-body" }, [cadViewport, cadOutliner]);
+  cadModal.appendChild(topbar);
+  cadModal.appendChild(cadBody);
+
+  launchCadBtn.onclick = () => {
+    CadStudio.isFullscreen = true;
+    cadModal.classList.remove("hidden");
+    host.style.display = "none";
+    setTimeout(() => {
+      CadStudio.resize();
+      renderCadToolOverlay();
+      renderOutliner();
+    }, 100);
+  };
+
   root.appendChild(el("style", { textContent: css }));
   root.appendChild(mkSvg());
   root.appendChild(panel);
+  root.appendChild(cadModal);
   document.body.appendChild(mkSvg());
   document.body.appendChild(host);
 
-  // Initialize Viewport Canvas
-  Studio.init(viewportFrame);
-
-  // Vehicle Connect Watcher
-  const poller = setInterval(() => {
-    if (Engine.scan()) {
-      titleText.innerHTML = "";
-      titleText.appendChild(document.createTextNode("Fast Roads Studio — " + Engine.vehicleName + " "));
-      titleText.appendChild(dot);
-      updateStatus("Vehicle: " + Engine.vehicleName + " (Connected)");
-      Studio.rebuildClone();
-    }
-  }, 1000);
+  // Initialize Viewport inside Fullscreen Modal Viewport
+  CadStudio.init(cadViewport);
 
   // SVG Glass Map Resizer
   let lastW = 0, lastH = 0;
@@ -1064,7 +1236,7 @@
     panel.style.setProperty("--my", (e.clientY - r.top) + "px");
   });
 
-  // Rubber-Band Drag Physics
+  // Rubber-Band Drag Physics for Main Panel
   const rubber = (o) => o === 0 ? 0 : Math.sign(o) * 36 * (1 - Math.exp(-Math.abs(o) / 80));
   const ZONE = 70;
   let dx = 0, dy = 0, drag = false;
@@ -1107,27 +1279,33 @@
   head.addEventListener("pointerup", endDrag);
   head.addEventListener("pointercancel", endDrag);
 
-  // Minimize Button: collapses the panel into the glass header pill
+  // Minimize Button (collapses panel into just the glass header pill)
   minBtn.onclick = () => {
     body.classList.toggle("hide");
     minBtn.textContent = body.classList.contains("hide") ? "+" : "–";
     setTimeout(updateMap, 60);
   };
 
-  // Close Button: hides the host menu
+  // Close Button
   closeBtn.onclick = () => {
     host.style.display = "none";
   };
 
-  // Keyboard Shortcuts: Toggle menu (Backquote ` or Backslash \)
+  // Keyboard Shortcuts: Toggle menu with Backslash `\` or Backquote `` ` ``
   window.addEventListener("keydown", (e) => {
     const active = document.activeElement || root.activeElement;
     if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)) return;
+
+    if (e.code === "Escape" && CadStudio.isFullscreen) {
+      exitCadBtn.click();
+      return;
+    }
 
     if (e.code === "Backslash" || e.code === "Backquote") {
       e.preventDefault();
       host.style.display = host.style.display === "none" ? "block" : "none";
     }
+
     if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") {
       e.preventDefault();
       if (e.shiftKey) History.redo(); else History.undo();
@@ -1142,5 +1320,5 @@
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
   }, 2000);
 
-  console.log("%c[FastRoads Studio Ready]%c Press '\\' or '`' to toggle.", "color:#00f0ff;font-weight:bold;", "color:#fff;");
+  console.log("%c[FastRoads Studio Ready]%c Press '\\' or '`' to open menu.", "color:#00f0ff;font-weight:bold;", "color:#fff;");
 })();
