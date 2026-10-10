@@ -22399,10 +22399,7 @@
           });
       var Sc = Mc;
       const Oc = () =>
-        Object(Ul.jsx)("div", {
-          className: "App",
-          children: Object(Ul.jsx)(Sc, {}),
-        });
+        Object(Ul.jsx)(Sc, {});
       var Lc = function () {
         return Object(Ul.jsx)(Oc, {});
       };
@@ -22418,6 +22415,23 @@
               }
             );
       };
+
+      // ==========================================
+      // [MOD HOOKS: EXPOSE ALL GAME ENGINE GLOBALS]
+      // ==========================================
+      window.THREE = r;
+      window.car = z; window.z = z;
+      window.game = game;
+      window.Do = Do;
+      window.So = So;
+      window.dr = dr;
+      window.jr = jr;
+      window.vehicles = vehicles;
+      window.qr = qr; window.gameScene = qr;
+      window.Be = Be;
+      window.gameInput = input;
+      // ==========================================
+
       h.a.render(
         Object(Ul.jsx)(a.a.StrictMode, { children: Object(Ul.jsx)(Lc, {}) }),
         document.getElementById("root")
