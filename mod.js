@@ -1,5 +1,5 @@
 /**
- * Fast Roads Studio v10  —  Slow Roads mod menu + fullscreen 3D CAD editor
+ * Fast Roads Studio v11  —  Slow Roads mod menu + fullscreen 3D CAD editor
  * Standalone script (mod.js). Paste into the console / load as a userscript.
  *
  * VIEWPORT   LMB click = select · LMB drag (object mode) = orbit · LMB drag (edit mode) = box select
@@ -396,11 +396,11 @@
     enginePower: 1.0, gravityY: -9.81,
     infiniteBoost: false, noClip: false, infiniteGrip: false,
     wheelRadius: 0.34, wheelbase: 2.75,
-    preview: "studio", jetMode: false, jetPower: 1, pauseGame: true
+    preview: "studio", jetMode: false, jetPower: 1, pauseGame: true, aircraft: false
   });
   const DEFAULTS = JSON.parse(JSON.stringify(S));
   Object.assign(S, loadSaved());
-  S.tab = 0; S.tool = "select"; S.selMode = "object"; S.axis = null;
+  S.tab = 0; S.tool = "select"; S.selMode = "object"; S.axis = null; S.aircraft = false;
 
   // =========================================================================
   // 3. ENGINE RESOLVER (THREE + live car). Tolerant of minified builds.
@@ -518,6 +518,7 @@
       BufferAttribute: T.BufferAttribute || (pa.isBufferAttribute ? pa.constructor : null),
       Standard: T.MeshStandardMaterial || (sm && sm.isMeshStandardMaterial ? sm.constructor : null),
       PointLight: T.PointLight || null,
+      sampleMat: sm || null, Material: sm ? sm.constructor : null,
       Color: T.Color || (sm && sm.color ? sm.color.constructor : null)
     };
   }
@@ -574,6 +575,17 @@
         lastGrav = S.gravityY;
       }
       if (S.noClip) { c.didCollide = false; c.wrongWay = false; }
+      if (S.aircraft && c.vel && typeof c.vel.y === "number") {
+        const up = held.has("KeyI") ? 1 : held.has("KeyK") ? -1 : 0;
+        c.vel.y += up * 0.3;
+        if (typeof c.vel.multiplyScalar === "function") {
+          const y = c.vel.y;
+          if (held.has("KeyU")) { c.vel.multiplyScalar(1.015); c.vel.y = y; }
+          if (held.has("KeyO")) { c.vel.multiplyScalar(0.985); c.vel.y = y; }
+        }
+        const hp = c.geo.getObjectByName("__mod_cad_parts__");
+        if (hp) hp.rotation.x = -clamp(c.vel.y * 0.04, -0.5, 0.5);
+      }
       if (S.jetMode && c.vel && typeof c.vel.y === "number") {
         if (held.has("Space")) c.vel.y += 0.35 * S.jetPower;
         if ((held.has("ShiftLeft") || held.has("ShiftRight")) && typeof c.vel.multiplyScalar === "function") {
@@ -623,7 +635,7 @@
       if (!G) return false;
       let n = 0;
       for (const o of Studio.objs) if (o.src && (o.dirty.t || o.dirty.m || o.dirty.g)) { try { this.src(o, car, G); n++; } catch (e) { console.warn("[FastRoads] sync failed for", o.name, e); } }
-      try { this.customs(car, G); } catch (e) { console.warn("[FastRoads] custom sync failed", e); }
+      try { const cn = this.customs(car, G); if (cn) updateStatus("Synced: " + cn + " custom part(s) attached to the car"); } catch (e) { console.warn("[FastRoads] custom sync failed", e); updateStatus("Custom part sync failed: " + e.message); }
       try { this.neon(car, G); } catch (e) { /* ignore */ }
       return true;
     },
@@ -711,7 +723,12 @@
       let holder = car.geo.getObjectByName("__mod_cad_parts__");
       const list = Studio.objs.filter((o) => !o.src && !o.deleted && o.visible);
       if (!holder && !list.length) return;
-      if (!G.Group || !G.Mesh || !G.Standard) return;
+      if (!G.Group || !G.Mesh || !G.BufferGeometry || !G.BufferAttribute || !(G.Standard || G.sampleMat)) {
+        const miss = ["Group", "Mesh", "BufferGeometry", "BufferAttribute"].filter((k) => !G[k]).concat(G.Standard || G.sampleMat ? [] : ["Material"]);
+        updateStatus("Custom parts NOT attached: can't find game classes (" + miss.join(", ") + ")");
+        console.warn("[FastRoads] missing game classes", miss, G);
+        return 0;
+      }
       if (!holder) { holder = new G.Group(); holder.name = "__mod_cad_parts__"; car.geo.add(holder); }
       while (holder.children.length) {
         const ch = holder.children[0];
@@ -722,10 +739,7 @@
       const T = Studio.T;
       for (const o of list) {
         const faceCols = o.poly.col.some(Boolean);
-        const mat = new G.Standard({
-          color: faceCols ? "#ffffff" : o.color, metalness: o.metal, roughness: o.rough, opacity: o.opacity,
-          transparent: o.opacity < 0.999, vertexColors: faceCols, side: 2
-        });
+        const mat = this.mkMat(o, G, faceCols);
         if (mat.emissive && mat.emissive.set) { mat.emissive.set(o.emissive); mat.emissiveIntensity = o.emInt; }
         const m = new G.Mesh(this.buildGeo(o, G, faceCols), mat);
         m.name = "__mod_part_" + o.name;
@@ -736,6 +750,24 @@
         m.position.set(p.x, p.y, p.z); m.quaternion.set(q.x, q.y, q.z, q.w); m.scale.set(s.x, s.y, s.z);
         holder.add(m);
       }
+      console.log("[FastRoads] attached " + list.length + " custom part(s) to", car.geo);
+      return list.length;
+    },
+
+    mkMat(o, G, faceCols) {
+      const Mat = G.Standard || G.Material;
+      const opt = { color: faceCols ? "#ffffff" : o.color, opacity: o.opacity, transparent: o.opacity < 0.999, vertexColors: faceCols, side: 2 };
+      if (G.Standard) { opt.metalness = o.metal; opt.roughness = o.rough; }
+      let mat = null;
+      try { if (Mat) mat = new Mat(opt); } catch (e) { mat = null; }
+      if (!mat && G.sampleMat) {
+        mat = G.sampleMat.clone();
+        if (mat.color && mat.color.set) mat.color.set(opt.color);
+        mat.vertexColors = faceCols; mat.side = 2; mat.opacity = o.opacity; mat.transparent = opt.transparent;
+        if (mat.map) mat.map = null;
+        mat.needsUpdate = true;
+      }
+      return mat;
     },
 
     neon(car, G) {
@@ -971,7 +1003,7 @@
     let p;
     const add = (g, hex) => { const q = P(g); q.col = q.col.map(() => hex); if (p) p.append(q); else p = q; };
     const addBox = (w, h, d, x, y, z, hex) => { const g = new T.BoxGeometry(w, h, d); g.translate(x, y, z); add(g, hex); };
-    const cz = (rt, rb, len, z, hex) => { const g = new T.CylinderGeometry(rt, rb, len, 24); g.rotateX(Math.PI / 2); g.translate(0, 0, z); add(g, hex); };
+    const cz = (rt, rb, len, z, hex, seg) => { const g = new T.CylinderGeometry(rt, rb, len, seg || 24); g.rotateX(Math.PI / 2); g.translate(0, 0, z); add(g, hex); };
     switch (type) {
       case "wheel": case "bigwheel": {
         const R = type === "bigwheel" ? 0.55 : 0.34, W = type === "bigwheel" ? 0.4 : 0.24;
@@ -994,6 +1026,23 @@
         cz(0.06, 0.06, 0.14, 0, "#9aa4b2");
         const sp = new T.ConeGeometry(0.06, 0.12, 16); sp.rotateX(Math.PI / 2); sp.translate(0, 0, 0.12); add(sp, "#ef4444");
         addBox(0.12, 1.3, 0.02, 0, 0, 0.02, "#1f2937"); addBox(1.3, 0.12, 0.02, 0, 0, 0.02, "#1f2937");
+        break;
+      }
+      case "ac_fuselage":
+        cz(0.3, 0.32, 1.3, 0.1, "#e8eef7", 8); cz(0.17, 0.3, 0.5, 1.0, "#e8eef7", 8); cz(0.19, 0.19, 0.12, 1.3, "#334155", 8);
+        cz(0.3, 0.08, 1.3, -1.2, "#e8eef7", 8); cz(0.07, 0.07, 0.1, -1.9, "#ef4444", 8);
+        break;
+      case "ac_wing":
+        addBox(4.2, 0.06, 0.75, 0, 0, 0, "#e8eef7"); addBox(0.14, 0.062, 0.75, 2.06, 0, 0, "#ef4444"); addBox(0.14, 0.062, 0.75, -2.06, 0, 0, "#ef4444");
+        break;
+      case "ac_tailplane":
+        addBox(1.5, 0.05, 0.42, 0, 0, 0, "#e8eef7"); addBox(0.1, 0.052, 0.42, 0.7, 0, 0, "#ef4444"); addBox(0.1, 0.052, 0.42, -0.7, 0, 0, "#ef4444");
+        break;
+      case "ac_canopy": { const g = new T.SphereGeometry(0.28, 8, 6); g.scale(1, 0.8, 1.7); add(g, "#7dd3fc"); break; }
+      case "ac_gear": {
+        const wh = (x, z, r) => { const g = new T.CylinderGeometry(r, r, 0.1, 10); g.rotateZ(Math.PI / 2); g.translate(x, -0.4, z); add(g, "#15181d"); };
+        addBox(0.04, 0.4, 0.04, 0.35, -0.2, 0.4, "#9aa4b2"); addBox(0.04, 0.4, 0.04, -0.35, -0.2, 0.4, "#9aa4b2"); addBox(0.03, 0.3, 0.03, 0, -0.25, -1.8, "#9aa4b2");
+        wh(0.35, 0.4, 0.14); wh(-0.35, 0.4, 0.14); wh(0, -1.8, 0.09);
         break;
       }
       case "airwing": addBox(3.4, 0.05, 0.8, 0, 0, 0, "#e5e7eb"); addBox(3.4, 0.052, 0.12, 0, 0, -0.34, "#ef4444"); break;
@@ -1087,6 +1136,7 @@
         RAF(loop);
         if (!this.open) return;
         this.grid.visible = S.grid; this.axes.visible = S.grid;
+        try { this.updateGizmo(); } catch (err) { /* ignore */ }
         this.renderer.render(this.scene, this.camera);
       };
       loop();
@@ -1476,7 +1526,7 @@
       if (this.xf) this.finishXf(false);
       o.mesh.updateMatrixWorld(true);
       const obj = S.selMode === "object";
-      const xf = { kind, how, o, obj, axis: opts.axisVec ? opts.axisVec : S.axis, num: "", sx: this.mouse.x, sy: this.mouse.y, before: opts.before || o.snap() };
+      const xf = { kind, how, o, obj, axis: opts.axisVec ? opts.axisVec : (opts.axis !== undefined ? opts.axis : S.axis), num: "", sx: this.mouse.x, sy: this.mouse.y, before: opts.before || o.snap() };
       if (obj) {
         xf.p0 = o.mesh.position.clone(); xf.q0 = o.mesh.quaternion.clone(); xf.s0 = o.mesh.scale.clone();
         xf.c = o.center();
@@ -1685,6 +1735,98 @@
       if (!o || !m) return;
       const d = val - m[axis], ids = [...o.affected()], sel = { v: new Set(o.sel.v), e: new Set(o.sel.e), f: new Set(o.sel.f) };
       this.editPoly("Move selection", (p) => { ids.forEach((id) => { p.v[3 * id + axis] += d; }); return { select: (ob) => { sel.v.forEach((x) => ob.sel.v.add(x)); sel.e.forEach((x) => ob.sel.e.add(x)); sel.f.forEach((x) => ob.sel.f.add(x)); } }; });
+    },
+
+    // ---------- Roblox-style gizmo ----------
+    buildGizmo(kind) {
+      const T = this.T;
+      if (this.gizmo) { this.scene.remove(this.gizmo); this.gizmo.traverse((c) => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
+      const g = new T.Group(); this.gizmoKind = kind;
+      const COL = { x: 0xff4d4d, y: 0x4dff6a, z: 0x4d8dff }, dirs = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+      const vis = (c) => new T.MeshBasicMaterial({ color: c, depthTest: false, transparent: true, opacity: 0.95 });
+      const ghost = () => new T.MeshBasicMaterial({ visible: false });
+      const put = (m, axis, parent) => { m.userData.axis = axis; m.renderOrder = 999; m.frustumCulled = false; (parent || g).add(m); return m; };
+      const orient = (m, a) => { if (a === "x") m.rotation.z = -Math.PI / 2; else if (a === "z") m.rotation.x = Math.PI / 2; return m; };
+      const at = (m, a, d) => { const v = dirs[a]; m.position.set(v[0] * d, v[1] * d, v[2] * d); return m; };
+      for (const a of ["x", "y", "z"]) {
+        if (kind === "move") {
+          put(at(orient(new T.Mesh(new T.CylinderGeometry(0.035, 0.035, 0.8, 8), vis(COL[a])), a), a, 0.4), a);
+          put(at(orient(new T.Mesh(new T.ConeGeometry(0.11, 0.3, 12), vis(COL[a])), a), a, 0.95), a);
+          put(at(orient(new T.Mesh(new T.CylinderGeometry(0.14, 0.14, 1.2, 6), ghost()), a), a, 0.6), a);
+        } else if (kind === "scale") {
+          put(at(orient(new T.Mesh(new T.CylinderGeometry(0.025, 0.025, 0.9, 6), vis(COL[a])), a), a, 0.45), a);
+          put(at(new T.Mesh(new T.BoxGeometry(0.2, 0.2, 0.2), vis(COL[a])), a, 1.0), a);
+          put(at(orient(new T.Mesh(new T.CylinderGeometry(0.14, 0.14, 1.2, 6), ghost()), a), a, 0.6), a);
+        } else {
+          const ring = new T.Mesh(new T.TorusGeometry(1, 0.03, 8, 48), vis(COL[a]));
+          const hit = new T.Mesh(new T.TorusGeometry(1, 0.11, 6, 32), ghost());
+          const tip = new T.Mesh(new T.ConeGeometry(0.09, 0.24, 10), vis(COL[a])); tip.position.set(1, 0, 0);
+          const tip2 = tip.clone(); tip2.position.set(-1, 0, 0); tip2.rotation.z = Math.PI;
+          const holder = new T.Group();
+          [ring, hit, tip, tip2].forEach((m) => put(m, a, holder));
+          if (a === "x") holder.rotation.y = Math.PI / 2; else if (a === "y") holder.rotation.x = Math.PI / 2;
+          g.add(holder);
+        }
+      }
+      if (kind === "scale") put(new T.Mesh(new T.BoxGeometry(0.26, 0.26, 0.26), vis(0xffffff)), "uniform");
+      this.gizmo = g; this.scene.add(g);
+    },
+    updateGizmo() {
+      const T = this.T, o = this.active, k = S.tool;
+      const want = (k === "move" || k === "rotate" || k === "scale") && o && !o.deleted && o.visible && this.open;
+      if (!want) { if (this.gizmo) this.gizmo.visible = false; return; }
+      if (!this.gizmo || this.gizmoKind !== k) { this.buildGizmo(k); this._gc = null; }
+      this._gf = (this._gf || 0) + 1;
+      if (!this._gc || this._gf % 6 === 0) {
+        o.mesh.updateMatrixWorld(true);
+        let c;
+        if (S.selMode === "object") c = o.center().applyMatrix4(o.mesh.matrixWorld);
+        else { const m = this.median(); c = m ? new T.Vector3(m[0], m[1], m[2]).applyMatrix4(o.mesh.matrixWorld) : null; }
+        this._gc = c;
+      }
+      if (!this._gc) { this.gizmo.visible = false; return; }
+      this.gizmo.visible = true; this.gizmo.position.copy(this._gc);
+      const sc = Math.max(0.05, this.camera.position.distanceTo(this._gc) * 0.16);
+      this.gizmo.scale.set(sc, sc, sc);
+      this.gizmo.updateMatrixWorld(true);
+    },
+    pickGizmo(e) {
+      if (!this.gizmo || !this.gizmo.visible) return null;
+      this.raycaster.setFromCamera(this.ndc(e), this.camera);
+      this.gizmo.updateMatrixWorld(true);
+      const h = this.raycaster.intersectObjects(this.gizmo.children, true)[0];
+      return h ? h.object.userData.axis : null;
+    },
+
+    // ---------- aircraft ----------
+    spawnAircraft(record) {
+      const T = this.T, before = record ? this.snapAll() : null;
+      const mk = (type, label, x, y, z, fn) => {
+        const o = new Obj(T, this.uniqueName(label), makePoly(T, type), "custom");
+        o.base = ["Aircraft"]; o.color = "#ffffff"; o.metal = 0.15; o.rough = 0.55; o.mesh.position.set(x, y, z);
+        if (fn) fn(o);
+        this.addObj(o); return o;
+      };
+      mk("ac_gear", "Landing gear", 0, 0.55, 0); mk("ac_fuselage", "Fuselage", 0, 0.55, 0); mk("ac_wing", "Wing", 0, 0.5, 0.35);
+      mk("ac_tailplane", "Tailplane", 0, 0.62, -1.75); mk("tailfin", "Fin", 0, 0.68, -1.78);
+      const cp = mk("ac_canopy", "Canopy", 0, 0.9, 0.2, (o) => { o.opacity = 0.55; });
+      mk("propeller", "Propeller", 0, 0.55, 1.4);
+      this.active = cp;
+      if (record) { const after = this.snapAll(); History.record("Spawn aircraft", () => this.restoreAll(before), () => this.restoreAll(after)); }
+    },
+    aircraftMode(on) {
+      if (!this.ready) return updateStatus("Open the editor first (it is still starting)");
+      const before = this.snapAll();
+      S.aircraft = on;
+      this.objs.filter((x) => x.src).forEach((x) => { x.visible = !on; x.dirty.t = true; x.applyMat(); x.rebuildOverlay(); });
+      const planes = this.objs.filter((x) => x.base[0] === "Aircraft");
+      if (on && !planes.length) this.spawnAircraft(false);
+      if (!on) planes.forEach((x) => { x.deleted = true; x.applyMat(); x.rebuildOverlay(); });
+      S.gravityY = on ? -3 : -9.81; ctlReg.forEach((f) => f());
+      const after = this.snapAll();
+      History.record(on ? "Aircraft mode" : "Car mode", () => this.restoreAll(before), () => this.restoreAll(after));
+      Sync.run();
+      updateStatus(on ? "Aircraft: I/K = climb/dive, U/O = throttle up/down (not used by the game)" : "Back to car mode");
     },
 
     // ---------- preview / Blender-style tools ----------
@@ -1946,9 +2088,8 @@
         }
         if (e.button !== 0) return;
         if (S.tool === "move" || S.tool === "rotate" || S.tool === "scale") {
-          if (S.selMode === "object") { const h = this.rayAll(e); if (h && h.obj !== this.active) this.setActive(h.obj); }
-          this.startXform(S.tool, "drag");
-          return;
+          const ax = this.pickGizmo(e);
+          if (ax) { this.startXform(S.tool, "drag", { axis: ax === "uniform" ? null : ax }); return; }
         }
         if (S.tool === "paint") { this.paintDown(e); return; }
         this.down = { x: e.clientX, y: e.clientY, shift: e.shiftKey, moved: false };
@@ -2155,11 +2296,11 @@
       this.download("fastroads-" + String(Engine.currentType).toLowerCase() + ".json", JSON.stringify(data));
       updateStatus("Exported " + data.objects.length + " edited objects");
     },
-    exportOBJ() {
+    exportOBJ(only) {
       const T = Studio.T, t = new T.Vector3();
       let out = "# Fast Roads Studio export\n", vo = 1, uo = 1;
       for (const o of Studio.objs) {
-        if (o.deleted || !o.visible) continue;
+        if (o.deleted || !o.visible || (only && o !== only)) continue;
         o.mesh.updateMatrixWorld(true);
         const p = o.poly, M = o.mesh.matrixWorld;
         out += "o " + o.name.replace(/\s+/g, "_") + "\n";
@@ -2172,7 +2313,7 @@
         }
         vo += p.nv; uo += p.nt * 3;
       }
-      this.download("fastroads-model.obj", out, "text/plain");
+      this.download("fastroads-" + (only ? only.name.replace(/\s+/g, "_") : "model") + ".obj", out, "text/plain");
       updateStatus("Exported OBJ");
     },
     importFile(file) {
@@ -2244,7 +2385,8 @@
     basic: [["cube", "Cube"], ["sphere", "Sphere"], ["cylinder", "Cylinder"], ["cone", "Cone"], ["plane", "Plane"], ["torus", "Torus"]],
     car: [["wheel", "Wheel"], ["bigwheel", "Monster Wheel"], ["spoiler", "Spoiler"], ["wing", "GT Wing"], ["splitter", "Splitter"], ["bumper", "Bumper"], ["exhaust", "Exhaust"], ["light", "Headlight"], ["hoodscoop", "Hood Scoop"], ["mirror", "Side Mirror"], ["antenna", "Antenna"]],
     air: [["jet", "Jet Engine"], ["rocket", "Rocket Booster"], ["propeller", "Propeller"], ["airwing", "Airplane Wing"], ["tailfin", "Tail Fin"], ["flame", "Afterburner Flame"]],
-    neon: [["neonblock", "Neon Block"], ["neonbar", "Neon Bar"], ["neonring", "Neon Ring"]]
+    neon: [["neonblock", "Neon Block"], ["neonbar", "Neon Bar"], ["neonring", "Neon Ring"]],
+    aircraft: [["ac_fuselage", "Fuselage"], ["ac_wing", "Wing"], ["ac_tailplane", "Tailplane"], ["tailfin", "Tail Fin"], ["ac_canopy", "Canopy"], ["ac_gear", "Landing Gear"], ["propeller", "Propeller"]]
   };
   const HELP = [
     ["Navigate", [["MMB / RMB drag", "Orbit"], ["Shift + MMB/RMB", "Pan"], ["Wheel", "Zoom"], ["Numpad 1 / 3 / 7", "Front / Side / Top (Ctrl = opposite)"], ["Numpad 4 6 8 2", "Orbit in steps"], ["Numpad + / -", "Zoom"], ["Period / Numpad .", "Frame selection"], ["Home / Shift C", "Frame all"]]],
@@ -2386,6 +2528,15 @@
     .grpt { color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; margin-top: 4px; }
     ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: rgba(148,163,184,.3); border-radius: 8px; }
     .cad button:focus-visible, .cad input:focus-visible { outline: 2px solid #00f0ff; outline-offset: 1px; }
+    .vsplit { width: 5px; flex: none; cursor: col-resize; background: rgba(255,255,255,.05); transition: background .15s; }
+    .hsplit { height: 5px; flex: none; cursor: row-resize; background: rgba(255,255,255,.05); transition: background .15s; }
+    .vsplit:hover, .hsplit:hover { background: #00f0ff; }
+    .grip { position: absolute; right: 12px; bottom: 9px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 4; border-right: 2px solid rgba(0,0,0,.45); border-bottom: 2px solid rgba(0,0,0,.45); border-radius: 0 0 4px 0; touch-action: none; }
+    .paintbar { position: absolute; top: 12px; left: 62px; z-index: 5; display: none; flex-direction: column; gap: 6px; width: 190px; background: rgba(15,23,42,.88); padding: 9px; border-radius: 12px; border: 1px solid rgba(255,255,255,.12); }
+    .pbt { color: #94a3b8; font-size: 10.5px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
+    .pbsw { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+    .swatch { aspect-ratio: 1; border-radius: 6px; border: 2px solid transparent; cursor: pointer; padding: 0; }
+    .swatch:hover { transform: scale(1.12); } .swatch.on { border-color: #00f0ff; box-shadow: 0 0 0 1px #000 inset; }
   `;
 
   const ctlReg = [];
@@ -2463,12 +2614,17 @@
 
   // --- tab 0: Studio ---
   const vehicleDropdown = el("select", { className: "glass-select" });
-  ["Roadster", "Coach", "Bike", "Lambo", "Supercar"].forEach((t) => {
+  ["Roadster", "Coach", "Bike", "Lambo", "Supercar", "Aircraft"].forEach((t) => {
     const o = el("option", { value: t, textContent: t });
     if (t === Engine.currentType) o.selected = true;
     vehicleDropdown.appendChild(o);
   });
-  vehicleDropdown.onchange = (e) => Engine.setVehicleType(e.target.value);
+  vehicleDropdown.onchange = (e) => {
+    const v = e.target.value;
+    if (v === "Aircraft") { Studio.aircraftMode(true); return; }
+    if (S.aircraft) Studio.aircraftMode(false);
+    Engine.setVehicleType(v);
+  };
   const diag = el("div", { className: "diag" });
   const chip = (txt, ok) => el("span", { className: "chip " + (ok ? "ok" : "no"), textContent: txt });
   const renderDiag = () => {
@@ -2519,7 +2675,7 @@
 
   // --- tab 2: Internals ---
   const searchIn = el("input", { type: "text", placeholder: "Search property path…", style: "background:rgba(0,0,0,.2);border:0;border-radius:12px;padding:8px 12px;color:#000;outline:none;" });
-  const scroller = el("div", { style: "height:240px;overflow-y:auto;background:rgba(0,0,0,.2);border-radius:18px;padding:4px;" });
+  const scroller = el("div", { style: "height:240px;overflow-y:auto;resize:vertical;background:rgba(0,0,0,.2);border-radius:18px;padding:4px;" });
   const renderTable = () => {
     scroller.innerHTML = "";
     const car = Engine.scan(true);
@@ -2574,7 +2730,8 @@
 
   const tabs = el("div", { className: "tabs" }, [el("div", { className: "ind" }), tabA, tabB, tabC, tabD]);
   const body = el("div", { className: "b" }, [tabs, page0, page1, page2, page3, menuStatus]);
-  const panel = el("div", { className: "p" }, [head, body]);
+  const grip = el("div", { className: "grip", title: "Drag to resize" });
+  const panel = el("div", { className: "p" }, [head, body, grip]);
   const setTab = (i) => {
     S.tab = i;
     [1, 2, 3].forEach((n) => tabs.classList.toggle("t" + n, i === n));
@@ -2585,6 +2742,13 @@
   };
   tabA.onclick = () => setTab(0); tabB.onclick = () => setTab(1); tabC.onclick = () => setTab(2); tabD.onclick = () => setTab(3);
 
+  (() => {
+    let on = false, x0 = 0, w0 = 420;
+    grip.addEventListener("pointerdown", (e) => { on = true; x0 = e.clientX; w0 = panel.offsetWidth; grip.setPointerCapture(e.pointerId); e.preventDefault(); });
+    grip.addEventListener("pointermove", (e) => { if (!on) return; panel.style.width = clamp(w0 + e.clientX - x0, 340, 800) + "px"; });
+    const end = () => { if (!on) return; on = false; setTimeout(updateMap, 30); };
+    grip.addEventListener("pointerup", end); grip.addEventListener("pointercancel", end);
+  })();
   const resetAll = () => {
     Object.assign(S, JSON.parse(JSON.stringify(DEFAULTS)), { tab: S.tab, tool: "select", selMode: S.selMode, axis: null });
     try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
@@ -2666,7 +2830,20 @@
     ...["x", "y", "z"].map((a) => { const b = btn(a.toUpperCase(), () => { S.axis = S.axis === a ? null : a; if (Studio.xf) { Studio.xf.axis = S.axis; Studio.applyXf(); } UI.refreshAxis(); }, "ax sm", "Lock axis"); axBtns[a] = b; return b; }),
     (() => { const b = btn("Snap", () => { S.snap = !S.snap; UI.refreshAxis(); }, "sm", "Ctrl while dragging"); axBtns.snap = b; return b; })()
   ]);
-  view.append(shelf, infoEl, boxEl, el("div", { className: "vbar" }, [hintEl, axisBar]));
+  const SWATCH = ["#ff3b6b", "#ff7a1a", "#ffd60a", "#34c759", "#00f0ff", "#0a84ff", "#7c3aed", "#ff2bd6", "#ffffff", "#9aa4b2", "#334155", "#000000", "#ef4444", "#16a34a", "#1d4ed8", "#92400e"];
+  const paintBar = el("div", { className: "paintbar" });
+  const buildPaintBar = () => {
+    paintBar.innerHTML = "";
+    const pick = el("input", { type: "color", value: S.paintColor }), hex = el("input", { type: "text", className: "num hex", value: S.paintColor, maxLength: 7 });
+    const setC = (c) => { S.paintColor = c.toLowerCase(); pick.value = S.paintColor; hex.value = S.paintColor; paintBar.querySelectorAll(".swatch").forEach((b) => b.classList.toggle("on", b.title === S.paintColor)); };
+    pick.oninput = () => setC(pick.value);
+    hex.onchange = () => { let v = hex.value.trim(); if (v[0] !== "#") v = "#" + v; if (isHex(v)) setC(v); else hex.value = S.paintColor; };
+    paintBar.appendChild(el("div", { className: "pbt", textContent: "Paint colour" }));
+    paintBar.appendChild(el("div", { className: "pbsw" }, SWATCH.map((c) => el("button", { className: "swatch" + (S.paintColor === c ? " on" : ""), title: c, style: "background:" + c, onclick: () => setC(c) }))));
+    paintBar.appendChild(el("div", { className: "rowf" }, [pick, hex]));
+    paintBar.appendChild(el("div", { className: "note", textContent: "Object mode: click a part to recolour it. Edit modes: click or drag across faces." }));
+  };
+  view.append(shelf, paintBar, infoEl, boxEl, el("div", { className: "vbar" }, [hintEl, axisBar]));
 
   const sidebar = el("div", { className: "side" });
   const searchBox = el("input", { type: "text", className: "search", placeholder: "Search objects…" });
@@ -2675,7 +2852,20 @@
   sidebar.appendChild(el("div", { className: "out" }, [el("div", { className: "grp", style: "justify-content:space-between" }, [el("b", { style: "color:#94a3b8;font-size:10.5px;letter-spacing:.6px", textContent: "OUTLINER" }), caStatus]), searchBox, treeEl]));
   const propsEl = el("div", { className: "scroll" });
   sidebar.appendChild(propsEl);
-  cad.appendChild(el("div", { className: "cad-main" }, [view, sidebar]));
+  const hsplit = el("div", { className: "hsplit", title: "Drag to resize the outliner" });
+  sidebar.insertBefore(hsplit, propsEl);
+  const outEl = sidebar.firstChild;
+  dragger(hsplit, (e) => { const r = sidebar.getBoundingClientRect(); outEl.style.height = clamp(e.clientY - r.top, 90, r.height - 160) + "px"; });
+  const vsplit = el("div", { className: "vsplit", title: "Drag to resize the sidebar" });
+  cad.appendChild(el("div", { className: "cad-main" }, [view, vsplit, sidebar]));
+  const dragger = (node, onMove) => {
+    let on = false;
+    node.addEventListener("pointerdown", (e) => { on = true; node.setPointerCapture(e.pointerId); e.preventDefault(); });
+    node.addEventListener("pointermove", (e) => { if (on) onMove(e); });
+    const end = () => { on = false; Studio.resize(); };
+    node.addEventListener("pointerup", end); node.addEventListener("pointercancel", end);
+  };
+  dragger(vsplit, (e) => { sidebar.style.width = clamp(innerWidth - e.clientX, 240, Math.round(innerWidth * 0.6)) + "px"; Studio.resize(); });
 
   // ---------- outliner ----------
   const folderOpen = new Map();
@@ -2809,14 +2999,15 @@
     partColor.oninput = () => { S.partColor = partColor.value; };
     const pgrp = (title, list) => [el("div", { className: "grpt", textContent: title }), el("div", { className: "wrapb" }, list.map(([t, l]) => btn("[plus] " + l, () => Studio.addPart(t, l), "sm")))];
     propsEl.appendChild(section("add", "Add parts", [].concat(
-      pgrp("Basic", PARTS.basic), pgrp("Car", PARTS.car), pgrp("Aero & jets", PARTS.air), pgrp("Neon (glows)", PARTS.neon),
-      [el("div", { className: "rowf" }, [el("label", { textContent: "New colour" }), partColor]),
+      pgrp("Basic", PARTS.basic), pgrp("Car", PARTS.car), pgrp("Aero & jets", PARTS.air), pgrp("Aircraft", PARTS.aircraft), pgrp("Neon (glows)", PARTS.neon),
+      [el("div", { className: "wrapb" }, [btn("[plus] Spawn full aircraft", () => Studio.spawnAircraft(true), "sm pri")]),
+        el("div", { className: "rowf" }, [el("label", { textContent: "New colour" }), partColor]),
         el("div", { className: "note", textContent: "New parts spawn on top of the car and attach on sync. Neon parts get a real light. Shift+A opens this as a menu." })])));
 
     const file = el("input", { type: "file", accept: ".json,application/json", style: "display:none" });
     file.onchange = () => { if (file.files[0]) Project.importFile(file.files[0]); file.value = ""; };
     propsEl.appendChild(section("project", "Project / export", [
-      el("div", { className: "wrapb" }, [btn("Export JSON", () => Project.exportJSON(), "sm pri", "Re-importable"), btn("Export OBJ", () => Project.exportOBJ(), "sm"), btn("Import JSON", () => file.click(), "sm"), file]),
+      el("div", { className: "wrapb" }, [btn("Export JSON", () => Project.exportJSON(), "sm pri", "Re-importable"), btn("Export OBJ", () => Project.exportOBJ(), "sm"), btn("Export part OBJ", () => Project.exportOBJ(Studio.active), "sm", "Only the selected part"), btn("Import JSON", () => file.click(), "sm"), file]),
       el("div", { className: "wrapb" }, [btn("Save in browser", () => Project.saveLocal(), "sm"), btn("Load saved", () => Project.loadSaved(false), "sm"), btn("Revert all", () => { if (confirm("Revert every part to the original car?")) Studio.revertAll(); }, "sm dan")]),
       el("div", { className: "rowf" }, [el("label", { textContent: "Auto-apply" }), mkSwitch(S.autoApply, (v) => { S.autoApply = v; })]),
       el("div", { className: "note", textContent: "JSON stores only parts you changed (geometry, transforms, materials, per-face paint) and re-applies by part name." })]));
@@ -2844,7 +3035,7 @@
   // =========================================================================
   const defaultHint = () => {
     if (S.tool === "paint") return "Paint: click / drag to colour · Esc = select tool";
-    if (S.tool !== "select") return S.tool[0].toUpperCase() + S.tool.slice(1) + " tool: drag to transform the selection · X/Y/Z lock axis · Ctrl snaps";
+    if (S.tool !== "select") return S.tool[0].toUpperCase() + S.tool.slice(1) + " tool: drag a handle (arrows / dots / rings) · click empty space to select · G/R/S keys still work";
     if (S.selMode === "object") return "Click = select · drag = orbit · RMB/MMB = orbit · Shift+RMB/MMB = pan · wheel = zoom · G/R/S transform · Shift+D duplicate";
     return "Click = select · Shift = add · drag = box select · G/R/S · E extrude · F face · Del delete · Tab = object mode";
   };
@@ -2854,6 +3045,8 @@
       Object.keys(toolBtns).forEach((t) => toolBtns[t].classList.toggle("on", S.tool === t));
       undoBtn.disabled = History.index < 0; redoBtn.disabled = History.index >= History.stack.length - 1;
       this.refreshAxis();
+      paintBar.style.display = S.tool === "paint" ? "flex" : "none";
+      if (S.tool === "paint") buildPaintBar();
       if (!Studio.xf) hintEl.textContent = defaultHint();
       renderOutliner();
       renderProps();
@@ -2918,7 +3111,7 @@
     },
     addItems() {
       const g = (head, list) => [{ head }].concat(list.map(([t, l]) => ({ label: l, icon: "plus", fn: () => Studio.addPart(t, l) })));
-      return [].concat(g("Basic", PARTS.basic), g("Car", PARTS.car), g("Aero & jets", PARTS.air), g("Neon (glows)", PARTS.neon));
+      return [].concat(g("Basic", PARTS.basic), g("Car", PARTS.car), g("Aero & jets", PARTS.air), g("Aircraft", PARTS.aircraft), g("Neon (glows)", PARTS.neon));
     },
     addMenu(x, y) { this.showMenu(this.addItems(), x, y); },
     ctxMenu(x, y) {
@@ -3034,11 +3227,11 @@
   setInterval(() => {
     try {
       const copy = Object.assign({}, S);
-      delete copy.tab; delete copy.tool; delete copy.selMode; delete copy.axis;
+      delete copy.tab; delete copy.tool; delete copy.selMode; delete copy.axis; delete copy.aircraft;
       localStorage.setItem(KEY, JSON.stringify(copy));
     } catch (e) { /* storage unavailable */ }
   }, 2000);
   setInterval(() => { if (!Studio.open && S.tab === 0) renderDiag(); }, 2500);
 
-  console.log("%c[FastRoads Studio v9.1 ready]%c Press '\\' or '`' for the menu.", "color:#00f0ff;font-weight:bold;", "color:inherit;");
+  console.log("%c[FastRoads Studio v11 ready]%c Press '\\' or '`' for the menu.", "color:#00f0ff;font-weight:bold;", "color:inherit;");
 })();
