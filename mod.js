@@ -2701,7 +2701,7 @@
   };
   const page1 = el("div", { className: "pg hide" }, [
     el("div", { className: "card" }, [
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Engine power", el("small", {}, ["Scales top speed & acceleration (1.0 = stock)"])]), stepper(S.enginePower, 0.1, 20, 0.1, (v) => { S.enginePower = v; }, "enginePower").wrap]),
+      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Engine power", el("small", {}, ["Scales top speed & acceleration (1.0 = stock)"])]), stepper(S.enginePower, 0.1, 999999999, 0.1, (v) => { S.enginePower = v; }, "enginePower").wrap]),
       el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Gravity", el("small", {}, ["m/s² (stock −9.81)"])]), stepper(S.gravityY, -40, 10, 0.5, (v) => { S.gravityY = v; }, "gravityY").wrap])]),
     el("div", { className: "card" }, [
       el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Wheel radius", el("small", {}, ["Applied only if your build exposes it"])]), stepper(S.wheelRadius, 0.15, 0.8, 0.02, (v) => { S.wheelRadius = v; applyWheels(); }, "wheelRadius").wrap]),
