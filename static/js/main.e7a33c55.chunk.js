@@ -12575,6 +12575,22 @@
               },
             },
           },
+          Jet: {
+            enabled: !0, name: "Jet", skins: [], aircraft: !0, jet: !0,
+            bodyObj: { default: i.p + "static/media/jet.obj" },
+            wheelObj: { default: null },
+            buildWheel: () => __frAircraftWheel(),
+            icon: ur, audio: { roll: cr, engine: pr },
+            wheels: { tyreWidth: 0, width: 1.6, length: 3.0, radius: 0.3, circumference: 1.885, travel: 0.1 },
+            metrics: { shadowMapSize: 9, steerSpeed: 1.2, accel: 14, reverse: 5, jerk: 30, brake: 8, mass: 1500, steerAccel: 8,
+              maxSteer: 0.5, axleHeight: 0.3, dampening: 0.05, rockFactor: 3, drag: 0.0004, topSpeed: 140, rollResistance: 0.1,
+              steerInterval: 1.3, slipBase: 0.35, slipMod: 0.1, aeroFactor: 0.2, headlightPos: { x: 0.3, y: 0.95, z: 3.1 } },
+            cameras: {
+              Chase: { pitch: { near: 0.25, far: 0.18 }, yOffset: { near: 1.8, far: 2.6 }, posOffset: [0, 0, 1.5], range: { near: 10, far: 14 }, farSpeed: 120, smoothFactor: 1.4 },
+              ChaseFar: { pitch: { near: 0.22, far: 0.12 }, yOffset: { near: 2.5, far: 4 }, posOffset: [0, 0, 1.5], range: { near: 16, far: 22 }, farSpeed: 120, smoothFactor: 1.2 },
+              FirstPerson: { pitch: { near: 0.04, far: 0.04 }, yOffset: { near: 1.35, far: 1.35 }, posOffset: [0, 0, 1.7], range: { near: 0.75, far: 0.75 }, farSpeed: 120, smoothFactor: 0.3, hideVehicle: !0 },
+            },
+          },
           Rover: {
             enabled: !1,
             name: "Rover",
@@ -12624,6 +12640,7 @@
           Lambo: vehicles.Lambo,
           Supercar: vehicles.Supercar,
           Aircraft: vehicles.Aircraft,
+          Jet: vehicles.Jet,
         },
         br = 1,
         fr = 2;
@@ -17040,6 +17057,44 @@ function __frLoad(loader, mod, def, key, cb) {
   if (def && def[key]) { try { cb(def[key]()); } catch (err) { console.error("[FR] model build failed", err); } return; }
   loader.load(mod.default, cb);
 }
+// ===== [FAST ROADS: JET] =====
+const __frJ = { fx: [], halos: [], on: false, lvl: 0, was: false, haloMat: null };
+function __frJetSetup(root, def) {
+  const J = __frJ; J.fx = []; J.halos = []; J.on = false; J.lvl = 0;
+  if (!def || !def.jet) return;
+  if (!J.haloMat) J.haloMat = new r.C({ color: 0xff8a2a, transparent: !0, opacity: 0, depthWrite: !1, blending: 2, fog: !1 });
+  const add = [];
+  root.traverse((m) => {
+    if (!m.isMesh) return;
+    const p = m.name.split("_"), k = p[1];
+    if (k !== "flame" && k !== "flamecore") return;
+    const zc = p[0].slice(-1) === "R" ? 0.32 : -0.32;
+    m.geometry.translate(3.3, -0.8, -zc);          // pivot flame at the nozzle so scaling grows it backwards
+    m.position.set(-3.3, 0.8, zc);
+    J.fx.push(m);
+    if (k === "flame") { const h = new r.B(new r.Q(1, 10, 8), J.haloMat); h.position.set(-3.7, 0.8, zc); add.push(h); }
+  });
+  for (const h of add) { root.add(h); J.halos.push(h); }
+}
+function __frJetUpdate(vc, dt) {
+  const d = vc.vehicleDef, J = __frJ;
+  if (!d || !d.jet) { window.__FR_JET = null; return; }
+  const n = !!input.key.KeyN;
+  if (n && !J.was) J.on = !J.on;
+  J.was = n;
+  if (J.on) z.drive = Math.max(z.drive, z.metrics.accel * 3);          // afterburner thrust
+  const night = z.headlights ? 1 : 0;
+  const tgt = J.on ? 1 : z.drive > 0 ? 0.18 : 0;
+  J.lvl += (tgt - J.lvl) * Math.min(1, 8 * dt);
+  const fl = J.lvl * (0.85 + Math.random() * 0.3), vis = J.lvl > 0.03;
+  for (const f of J.fx) { f.visible = vis; f.scale.set(0.05 + fl * 1.2, 0.5 + 0.5 * J.lvl, 0.5 + 0.5 * J.lvl); }
+  if (J.haloMat) J.haloMat.opacity = J.lvl * (night ? 0.75 : 0.18) * (0.85 + Math.random() * 0.3);
+  const hs = 0.8 + 1.3 * J.lvl * (1 + night * 1.2);
+  for (const h of J.halos) { h.visible = vis; h.scale.set(hs, hs, hs); }
+  Cl.jetglow.emissiveIntensity = 0.2 + J.lvl * (2 + 3 * night);
+  window.__FR_JET = { on: J.on, lvl: J.lvl };
+}
+// ===== [/FAST ROADS: JET] =====
 // per-frame flight state (called at the top of updateWheelMotion)
 function __frAcPrep(vc, dt) {
   const d = vc.vehicleDef;
@@ -17129,6 +17184,9 @@ const Il = [2.23694, 3.59999],
         Nl = 2 * Math.PI,
         jl = 0.5,
         Cl = {
+          flame: new r.C({ color: 0xff7a1a, transparent: !0, opacity: 0.85, depthWrite: !1, side: r.k, blending: 2, fog: !1 }),
+          flamecore: new r.C({ color: 0xfff1b0, transparent: !0, opacity: 0.95, depthWrite: !1, side: r.k, blending: 2, fog: !1 }),
+          jetglow: new r.F({ color: 0x331208, emissive: 0xff5a10, emissiveIntensity: 0.2, roughness: 0.4 }),
           default: new r.E({ color: 11184810 }),
           grey: new r.D({ color: 5592405 }),
           wheel: new r.D({ color: 4473924 }),
@@ -17433,6 +17491,7 @@ const Il = [2.23694, 3.59999],
                   "shadow" == i && (e.castShadow = !0);
               }
             }),
+            __frJetSetup(e, this.vehicleDef),
               this.positionHeadlights(),
               this.updateHeadlights(),
               (e.rotation.y = -Math.PI / 2),
@@ -22588,7 +22647,7 @@ const Il = [2.23694, 3.59999],
       window.qr = qr; window.gameScene = qr;
       window.Be = Be;
       window.gameInput = input;
-      window.__FR_GT = { Group: r.G, Object3D: r.G, Mesh: r.B, BufferGeometry: r.g, BufferAttribute: r.o, MeshStandardMaterial: r.F, Color: r.i, Vector3: r.U };
+      window.__FR_GT = { Group: r.G, Object3D: r.G, Mesh: r.B, BufferGeometry: r.g, BufferAttribute: r.o, MeshStandardMaterial: r.F, Color: r.i, Vector3: r.U, Sphere: r.Q, Basic: r.C };
       // ====================================================
 
       h.a.render(

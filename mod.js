@@ -520,6 +520,8 @@
       PointLight: T.PointLight || null,
       sampleMat: sm || null, Material: sm ? sm.constructor : null,
       Color: T.Color || (sm && sm.color ? sm.color.constructor : null)
+      Sphere: (window.__FR_GT || {}).Sphere || T.SphereGeometry || null,
+      Basic: (window.__FR_GT || {}).Basic || T.MeshBasicMaterial || null
     };
   }
 
@@ -533,7 +535,38 @@
 
   const baseMetrics = new WeakMap();
   let lastGrav = null;
-
+  let _fxT = performance.now(), _spin = 0;
+  function modFx(c) {
+    const now = performance.now(), dt = Math.min(0.1, (now - _fxT) / 1000); _fxT = now;
+    const h = c.geo.getObjectByName("__mod_cad_parts__"); if (!h) return;
+    const night = c.headlights ? 1 : 0, J = window.__FR_JET, rad = (c.wheels && c.wheels.radius) || 0.34;
+    _spin = (_spin + ((c.speed || 0) / rad) * dt) % (Math.PI * 2);   // same rate as the wheels
+    const lvl = J ? J.lvl : held.has("KeyW") ? (held.has("ShiftLeft") ? 1 : 0.25) : 0;
+    for (const m of h.children) {
+      const u = m.userData, nm = m.name;
+      if (/prop|blade|rotor/i.test(nm)) {
+        if (!u.q0) u.q0 = { x: m.quaternion.x, y: m.quaternion.y, z: m.quaternion.z, w: m.quaternion.w };
+        const q = u.q0, s = Math.sin(_spin / 2), co = Math.cos(_spin / 2);
+        m.quaternion.set(q.x * co + q.y * s, q.y * co - q.x * s, q.w * s + q.z * co, q.w * co - q.z * s);
+      }
+      const flame = /flame|afterburner/i.test(nm);
+      if (flame) {
+        if (!u.s0) u.s0 = { x: m.scale.x, y: m.scale.y, z: m.scale.z };
+        m.visible = lvl > 0.03;
+        const f = lvl * (0.85 + Math.random() * 0.3);
+        m.scale.set(u.s0.x * (0.6 + 0.4 * lvl), u.s0.y * (0.6 + 0.4 * lvl), u.s0.z * (0.1 + f * 1.3));
+      }
+      const halo = m.children.find((x) => x.name === "__mod_halo");
+      if (halo) {
+        halo.material.opacity = (night ? 0.5 : 0.12) * (flame ? lvl : 1);
+        halo.visible = !flame || lvl > 0.03;
+      }
+      if (m.material && "emissiveIntensity" in m.material) {
+        if (u.em === undefined) u.em = m.material.emissiveIntensity;
+        m.material.emissiveIntensity = u.em * (night ? 2.5 : 1);
+      }
+    }
+  }
   const Rewire = {
     install() {
       const orig = window.requestAnimationFrame;
@@ -550,6 +583,7 @@
       if (window.car && window.car !== Engine.car) Engine.scan(true);
       const c = Engine.car && Engine.car.geo ? Engine.car : Engine.scan();
       if (!c) return;
+      modFx(c);
 
       if (c.metrics) {
         let b = baseMetrics.get(c.metrics);
@@ -743,7 +777,13 @@
         if (mat.emissive && mat.emissive.set) { mat.emissive.set(o.emissive); mat.emissiveIntensity = o.emInt; }
         const m = new G.Mesh(this.buildGeo(o, G, faceCols), mat);
         m.name = "__mod_part_" + o.name;
-        if (o.neon && G.PointLight) { const l = new G.PointLight(o.color, o.neonInt, 5); l.name = "__mod_neon_" + o.name; m.add(l); }
+        if (o.neon && G.Sphere && G.Basic) {
+          const hm = new G.Basic({ color: o.color, transparent: true, opacity: 0, depthWrite: false, fog: false }); hm.blending = 2;
+          const h = new G.Mesh(new G.Sphere(1, 10, 8), hm); h.name = "__mod_halo";
+          let rr = 0.15; const v = o.poly.v;
+          for (let i = 0; i < v.length; i += 3) rr = Math.max(rr, Math.hypot(v[i], v[i + 1], v[i + 2]));
+          h.scale.set(rr * 1.4, rr * 1.4, rr * 1.4); m.add(h);
+        }
         o.mesh.updateMatrix();
         const p = new T.Vector3(), q = new T.Quaternion(), s = new T.Vector3();
         o.mesh.matrix.decompose(p, q, s);
@@ -2624,6 +2664,7 @@
     if (v === "Aircraft") { Studio.aircraftMode(true); return; }
     if (S.aircraft) Studio.aircraftMode(false);
     Engine.setVehicleType(v);
+    setTimeout(() => { if (Studio.ready && History.index < 0) Studio.loadCar(); }, 1600); // re-import the jet's meshes
   };
   const diag = el("div", { className: "diag" });
   const chip = (txt, ok) => el("span", { className: "chip " + (ok ? "ok" : "no"), textContent: txt });
