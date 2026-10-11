@@ -18,6 +18,52 @@
     h.style.display = h.style.display === "none" ? "block" : "none";
     return;
   }
+  (() => {
+  const showModError = (message) => {
+    const popup = document.querySelector("#achievement");
+    if (!popup) {
+      console.error("Achievement container not found.");
+      return;
+    }
+
+    popup.innerHTML = `
+      <div id="achievement-title">mod.js Error</div>
+      <div id="achievement-body"></div>
+      <div id="achievement-unlocked">error detected</div>
+    `;
+
+    popup.querySelector("#achievement-body").textContent = message;
+    popup.classList.add("achievement-active");
+
+    const soundUrl = performance.getEntriesByType("resource")
+      .map(resource => resource.name)
+      .find(url => url.includes("achievement.3ef707de.wav"));
+
+    if (soundUrl) {
+      const audio = new Audio(soundUrl);
+      audio.play().catch(console.error);
+    }
+
+    clearTimeout(window.__modErrorAnnouncementTimer);
+    window.__modErrorAnnouncementTimer = setTimeout(() => {
+      popup.classList.remove("achievement-active");
+      popup.innerHTML = "";
+    }, 10000);
+  };
+
+  window.addEventListener("error", event => {
+    showModError(
+      `${event.message}${event.lineno ? ` (Line ${event.lineno})` : ""}`
+    );
+  });
+
+  window.addEventListener("unhandledrejection", event => {
+    const reason = event.reason;
+    showModError(reason?.stack || reason?.message || String(reason));
+  });
+
+  window.__showModError = showModError;
+  })();
 
   const RAF = window.requestAnimationFrame.bind(window); // un-wrapped rAF for the editor loop
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
