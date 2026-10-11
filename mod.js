@@ -2854,17 +2854,18 @@
   sidebar.appendChild(propsEl);
   const hsplit = el("div", { className: "hsplit", title: "Drag to resize the outliner" });
   sidebar.insertBefore(hsplit, propsEl);
-  const outEl = sidebar.firstChild;
-  dragger(hsplit, (e) => { const r = sidebar.getBoundingClientRect(); outEl.style.height = clamp(e.clientY - r.top, 90, r.height - 160) + "px"; });
-  const vsplit = el("div", { className: "vsplit", title: "Drag to resize the sidebar" });
-  cad.appendChild(el("div", { className: "cad-main" }, [view, vsplit, sidebar]));
-  const dragger = (node, onMove) => {
+  function dragger(node, onMove) {
     let on = false;
     node.addEventListener("pointerdown", (e) => { on = true; node.setPointerCapture(e.pointerId); e.preventDefault(); });
     node.addEventListener("pointermove", (e) => { if (on) onMove(e); });
     const end = () => { on = false; Studio.resize(); };
     node.addEventListener("pointerup", end); node.addEventListener("pointercancel", end);
-  };
+  }
+
+  const outEl = sidebar.firstChild;
+  dragger(hsplit, (e) => { const r = sidebar.getBoundingClientRect(); outEl.style.height = clamp(e.clientY - r.top, 90, r.height - 160) + "px"; });
+  const vsplit = el("div", { className: "vsplit", title: "Drag to resize the sidebar" });
+  cad.appendChild(el("div", { className: "cad-main" }, [view, vsplit, sidebar]));
   dragger(vsplit, (e) => { sidebar.style.width = clamp(innerWidth - e.clientX, 240, Math.round(innerWidth * 0.6)) + "px"; Studio.resize(); });
 
   // ---------- outliner ----------
