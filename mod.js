@@ -2693,18 +2693,19 @@
     })()])
   ]);
   const det1 = el("details", { open: true }, [el("summary", { textContent: "Selection & Edit" }),
-  const scrollPanel = el("div", { className: "scroll" });
-  
   const detailsGroup = el("div", { className: "dbody" }, [
-    el("div", { className: "rowf" }, [el("label", { textContent: "Mode" }), (() => {
-      const seg = el("div", { className: "seg" }, [
-        btn("Obj", () => Studio.setMode("object")),
-        btn("Vert", () => Studio.setMode("v")),
-        btn("Edge", () => Studio.setMode("e")),
-        btn("Face", () => Studio.setMode("f"))
-      ]);
-      return seg;
-    })()]),
+    el("div", { className: "rowf" }, [
+      el("label", { textContent: "Mode" }), 
+      (() => {
+        const seg = el("div", { className: "seg" }, [
+          btn("Obj", () => Studio.setMode("object")),
+          btn("Vert", () => Studio.setMode("v")),
+          btn("Edge", () => Studio.setMode("e")),
+          btn("Face", () => Studio.setMode("f"))
+        ]);
+        return seg;
+      })()
+    ]),
     el("div", { className: "rowf" }, [
       btn("All", () => Studio.selectAll()),
       btn("None", () => Studio.selectNone()),
@@ -2717,11 +2718,13 @@
       btn("Mirror", () => Studio.mirrorObj())
     ])
   ]);
-  
+
   const det1 = el("details", { open: true }, [
     el("summary", { textContent: "Selection & Edit" }),
     detailsGroup
   ]);
+
+  const scrollPanel = el("div", { className: "scroll" });
 
   const det2 = el("details", { open: true }, [
     el("summary", { textContent: "Material & Appearance" }),
