@@ -560,7 +560,6 @@
           b = { top: typeof c.metrics.topSpeed === "number" ? c.metrics.topSpeed : 45, acc: typeof c.metrics.accel === "number" ? c.metrics.accel : 9 };
           baseMetrics.set(c.metrics, b);
         }
-        // Allow >300 mph (~134 m/s) when jet ignition is active
         const targetTop = S.jetIgnition ? 250 : b.top * S.enginePower;
         const targetAcc = S.jetIgnition ? 40 : b.acc * S.enginePower;
         c.metrics.topSpeed = targetTop;
@@ -638,7 +637,6 @@
         const p = new T.Vector3(), q = new T.Quaternion(), s = new T.Vector3();
         loc.decompose(p, q, s);
         n.position.set(p.x, p.y, p.z); n.quaternion.set(q.x, q.y, q.z, q.w); n.scale.set(s.x, s.y, s.z);
-        n.visible = o.visible && !o.deleted;
         n.updateMatrix();
         o.dirty.t = false;
       }
@@ -2430,8 +2428,6 @@
   const chip = (txt, ok) => el("span", { className: "chip " + (ok ? "ok" : "no"), textContent: txt });
   const renderDiag = () => {
     diag.innerHTML = "";
-    const renderDiag = () => {
-    diag.innerHTML = "";
     const car = Engine.scan();
     const g = Engine.gameThree;
     diag.appendChild(chip("Car: " + (car ? "Found" : "Missing"), !!car));
@@ -2456,7 +2452,6 @@
 
   const pgs = [];
 
-  // Page 0: Vehicle / General
   const pgVehicle = el("div", { className: "pg" }, [
     el("div", { className: "card" }, [
       el("div", { className: "row", textContent: "Vehicle Model" }, [vehicleDropdown]),
@@ -2473,7 +2468,6 @@
   ]);
   pgs.push(pgVehicle);
 
-  // Page 1: Physics / Tuning
   const pgPhysics = el("div", { className: "pg hide" }, [
     el("div", { className: "card" }, [
       el("div", { className: "row", textContent: "Engine Power Multiplier" }, [stepper(S.enginePower, 0.1, 10, 0.2, (v) => { S.enginePower = v; }, "enginePower").wrap]),
@@ -2485,7 +2479,6 @@
   ]);
   pgs.push(pgPhysics);
 
-  // Page 2: Studio / Jet & Neon
   const pgStudio = el("div", { className: "pg hide" }, [
     el("div", { className: "card" }, [
       el("div", { className: "row", textContent: "Jet Ignition" }, [mkSwitch(S.jetIgnition, (v) => { S.jetIgnition = v; }, "jetIgnition")]),
@@ -2502,7 +2495,6 @@
   ]);
   pgs.push(pgStudio);
 
-  // Page 3: CAD Editor Launch
   const launchBtn = btn("[box] Launch 3D CAD Studio", () => UI.enterStudio(), "launch");
   const pgEditor = el("div", { className: "pg hide" }, [
     el("div", { className: "card" }, [
@@ -2700,80 +2692,193 @@
       return seg;
     })()])
   ]);
-  const det1 = el("details", { open: true }, [el("summary", { textContent: "Selection & Edit" }), detailsGroup]);
-
-  const matGroup = el("div", { className: "dbody" }, [
+  const det1 = el("details", { open: true }, [el("summary", { textContent: "Selection & Edit" }),
+  const scrollPanel = el("div", { className: "scroll" });
+  const detailsGroup = el("div", { className: "dbody" }, [
+    el("div", { className: "rowf" }, [el("label", { textContent: "Mode" }), (() => {
+      const seg = el("div", { className: "seg" }, [
+        btn("Obj", () => Studio.setMode("object")),
+        btn("Vert", () => Studio.setMode("v")),
+        btn("Edge", () => Studio.setMode("e")),
+        btn("Face", () => Studio.setMode("f"))
+      ]);
+      return seg;
+    })()]),
     el("div", { className: "rowf" }, [
-      el("label", { textContent: "Color" }),
-      (() => {
-        const inp = el("input", { type: "color", value: "#2dd4ff" });
-        inp.oninput = (e) => {
-          const o = Studio.active;
-          if (!o) return;
-          o.color = e.target.value; o.dirty.m = true; o.rebuild();
-          Studio.scheduleSync();
-        };
-        return inp;
-      })()
+      btn("All", () => Studio.selectAll()),
+      btn("None", () => Studio.selectNone()),
+      btn("Invert", () => Studio.selectInvert()),
+      btn("Linked", () => Studio.selectLinked())
     ]),
     el("div", { className: "rowf" }, [
-      el("label", { textContent: "Metal" }),
-      (() => {
-        const rng = el("input", { type: "range", min: "0", max: "1", step: "0.05", value: "0.5" });
-        rng.oninput = (e) => {
-          const o = Studio.active; if (!o) return;
-          o.metal = parseFloat(e.target.value); o.dirty.m = true; o.applyMat();
-        };
-        return rng;
-      })()
-    ]),
-    el("div", { className: "rowf" }, [
-      el("label", { textContent: "Rough" }),
-      (() => {
-        const rng = el("input", { type: "range", min: "0", max: "1", step: "0.05", value: "0.5" });
-        rng.oninput = (e) => {
-          const o = Studio.active; if (!o) return;
-          o.rough = parseFloat(e.target.value); o.dirty.m = true; o.applyMat();
-        };
-        return rng;
-      })()
+      btn("Delete", () => Studio.deleteSel(), "dan"),
+      btn("Separate", () => Studio.separate()),
+      btn("Mirror", () => Studio.mirrorObj())
     ])
   ]);
-  const det2 = el("details", { open: true }, [el("summary", { textContent: "Material" }), matGroup]);
+  
+  const det1 = el("details", { open: true }, [
+    el("summary", { textContent: "Selection & Edit" }),
+    detailsGroup
+  ]);
 
-  scrollPanel.append(det1, det2);
+  const det2 = el("details", { open: true }, [
+    el("summary", { textContent: "Material & Appearance" }),
+    el("div", { className: "dbody" }, [
+      el("div", { className: "rowf" }, [
+        el("label", { textContent: "Color" }),
+        (() => {
+          const inp = el("input", { type: "color", value: S.paintColor });
+          inp.oninput = (e) => {
+            S.paintColor = e.target.value;
+            const o = Studio.active;
+            if (o) { o.color = S.paintColor; o.rebuild(); Studio.commit(o, "Change color", o.snap(), "mg"); }
+          };
+          return inp;
+        })()
+      ]),
+      el("div", { className: "rowf" }, [
+        el("label", { textContent: "Metal" }),
+        (() => {
+          const r = el("input", { type: "range", min: "0", max: "1", step: "0.05", value: "0.5" });
+          r.oninput = (e) => {
+            const o = Studio.active;
+            if (o) { o.metal = parseFloat(e.target.value); o.applyMat(); }
+          };
+          r.onchange = (e) => {
+            const o = Studio.active;
+            if (o) Studio.commit(o, "Change metalness", o.snap(), "m");
+          };
+          return r;
+        })()
+      ]),
+      el("div", { className: "rowf" }, [
+        el("label", { textContent: "Rough" }),
+        (() => {
+          const r = el("input", { type: "range", min: "0", max: "1", step: "0.05", value: "0.5" });
+          r.oninput = (e) => {
+            const o = Studio.active;
+            if (o) { o.rough = parseFloat(e.target.value); o.applyMat(); }
+          };
+          r.onchange = (e) => {
+            const o = Studio.active;
+            if (o) Studio.commit(o, "Change roughness", o.snap(), "m");
+          };
+          return r;
+        })()
+      ]),
+      el("div", { className: "rowf" }, [
+        el("label", { textContent: "Opacity" }),
+        (() => {
+          const r = el("input", { type: "range", min: "0.05", max: "1", step: "0.05", value: "1" });
+          r.oninput = (e) => {
+            const o = Studio.active;
+            if (o) { o.opacity = parseFloat(e.target.value); o.applyMat(); }
+          };
+          r.onchange = (e) => {
+            const o = Studio.active;
+            if (o) Studio.commit(o, "Change opacity", o.snap(), "m");
+          };
+          return r;
+        })()
+      ])
+    ])
+  ]);
+
+  const det3 = el("details", { open: false }, [
+    el("summary", { textContent: "Environment & Display" }),
+    el("div", { className: "dbody" }, [
+      el("div", { className: "rowf" }, [
+        el("label", { textContent: "Preview" }),
+        (() => {
+          const sel = el("select", { className: "glass-select" }, [
+            el("option", { value: "studio", textContent: "Studio" }),
+            el("option", { value: "sun", textContent: "Sunset" }),
+            el("option", { value: "flat", textContent: "Flat" })
+          ]);
+          sel.value = S.preview;
+          sel.onchange = (e) => Studio.setPreview(e.target.value);
+          return sel;
+        })()
+      ]),
+      el("div", { className: "rowf" }, [
+        el("label", { textContent: "Shading" }),
+        (() => {
+          const sel = el("select", { className: "glass-select" }, [
+            el("option", { value: "smooth", textContent: "Smooth" }),
+            el("option", { value: "flat", textContent: "Flat" }),
+            el("option", { value: "auto", textContent: "Auto Angle" })
+          ]);
+          sel.value = S.shading;
+          sel.onchange = (e) => Studio.setShading(e.target.value);
+          return sel;
+        })()
+      ]),
+      el("div", { className: "rowf" }, [
+        el("label", { textContent: "Grid" }),
+        mkSwitch(S.grid, (v) => { S.grid = v; })
+      ]),
+      el("div", { className: "rowf" }, [
+        el("label", { textContent: "X-Ray" }),
+        mkSwitch(S.xray, (v) => { S.xray = v; Studio.objs.forEach(o => o.rebuildOverlay()); })
+      ])
+    ])
+  ]);
+
+  const det4 = el("details", { open: false }, [
+    el("summary", { textContent: "Project & Export" }),
+    el("div", { className: "dbody" }, [
+      el("div", { className: "rowf" }, [
+        btn("Save JSON", () => Project.exportJSON()),
+        btn("Export OBJ", () => Project.exportOBJ())
+      ]),
+      el("div", { className: "rowf" }, [
+        btn("Revert All", () => Studio.revertAll(), "dan"),
+        btn("Aircraft Mode", () => Studio.aircraftMode(!S.aircraft))
+      ])
+    ])
+  ]);
+
+  scrollPanel.append(det1, det2, det3, det4);
   const sidePanel = el("div", { className: "side" }, [outPanel, scrollPanel]);
 
   const cadMain = el("div", { className: "cad-main" }, [cadView, sidePanel]);
-  const cadRoot = el("div", { className: "cad" }, [cadTop, cadMain]);
+  const cadContainer = el("div", { className: "cad" }, [cadTop, cadMain]);
+  mroot.appendChild(cadContainer);
 
-  const helpGrid = el("div", { className: "hgrid" });
-  HELP.forEach(([title, items]) => {
-    const sec = el("div", { className: "hsec" }, [el("b", { textContent: title })]);
-    items.forEach(([k, desc]) => {
-      sec.appendChild(el("div", { style: "display:flex;justify-content:space-between;margin-top:4px;font-size:11.5px;" }, [el("span", { textContent: k, style: "font-family:" + MONO + ";color:#00f0ff;" }), el("span", { textContent: desc })]));
-    });
-    helpGrid.appendChild(sec);
-  });
-  const helpModal = el("div", { className: "help", onclick: () => UI.toggleHelp(false) }, [
-    el("div", { style: "max-width:600px;margin:40px auto;background:#111a2e;border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:14px;", onclick: (e) => e.stopPropagation() }, [
-      el("div", { style: "display:flex;justify-content:space-between;align-items:center;" }, [el("b", { style: "font-size:15px;", textContent: "Fast Roads Studio - Keyboard Shortcuts" }), btn("Close", () => UI.toggleHelp(false))]),
-      helpGrid
+  const menuEl = el("div", { className: "ctx" });
+  mroot.appendChild(menuEl);
+  UI.menuEl = menuEl;
+
+  const helpEl = el("div", { className: "help" }, [
+    el("div", { style: "max-width:700px;margin:0 auto;display:flex;flex-direction:column;gap:16px;" }, [
+      el("div", { className: "row" }, [
+        el("h2", { style: "color:#00f0ff;font-size:20px;", textContent: "Fast Roads Studio — Keyboard Shortcuts" }),
+        btn("Close", () => UI.toggleHelp(false), "pri")
+      ]),
+      (() => {
+        const grid = el("div", { className: "hgrid" });
+        HELP.forEach(([sec, list]) => {
+          const secEl = el("div", { className: "hsec" }, [
+            el("h3", { style: "color:#94a3b8;margin-bottom:8px;font-size:12px;text-transform:uppercase;", textContent: sec })
+          ]);
+          list.forEach(([k, desc]) => {
+            secEl.appendChild(el("div", { className: "row", style: "margin-bottom:4px;" }, [
+              el("span", { style: "font-family:" + MONO + ";background:rgba(255,255,255,.1);padding:2px 6px;border-radius:4px;font-size:11px;", textContent: k }),
+              el("span", { style: "color:#cbd5e1;", textContent: desc })
+            ]));
+          });
+          grid.appendChild(secEl);
+        });
+        return grid;
+      })()
     ])
   ]);
-  UI.helpEl = helpModal;
+  mroot.appendChild(helpEl);
+  UI.helpEl = helpEl;
 
-  const ctxMenu = el("div", { className: "ctx" });
-  UI.menuEl = ctxMenu;
-  document.addEventListener("pointerdown", (e) => { if (!ctxMenu.contains(e.target)) UI.closeMenu(); });
+  window.addEventListener("keydown", Studio.ctrlKeyHandler, true);
+  document.addEventListener("keydown", Studio.blockKeys, true);
 
-  mroot.appendChild(el("style", { textContent: css }));
-  mroot.appendChild(cadRoot);
-  mroot.appendChild(helpModal);
-  mroot.appendChild(ctxMenu);
-
-  window.addEventListener("keydown", (e) => Studio.ctrlKeyHandler(e), true);
-  window.addEventListener("keyup", (e) => Studio.blockKeys(e), true);
-
-  updateStatus("Fast Roads Studio v11 ready");
+  console.log("Fast Roads Studio v11 initialized successfully.");
 })();
