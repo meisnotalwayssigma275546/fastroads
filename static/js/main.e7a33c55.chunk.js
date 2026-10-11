@@ -17077,41 +17077,50 @@ function __frLoad(loader, mod, def, key, cb) {
   loader.load(mod.default, cb);
 }
 // ===== [FAST ROADS: JET] =====
-const __frJ = { fx: [], halos: [], on: false, lvl: 0, was: false, haloMat: null };
+const __frJ = { fx: [], halos: [], blades: [], on: false, lvl: 0, haloMat: null, engineAttached: false };
 function __frJetSetup(root, def) {
-  const J = __frJ; J.fx = []; J.halos = []; J.on = false; J.lvl = 0;
-  if (!def || !def.jet) return;
+  const J = __frJ; J.fx = []; J.halos = []; J.blades = []; J.on = false; J.lvl = 0; J.engineAttached = false;
+  if (!root) return;
   if (!J.haloMat) J.haloMat = new r.C({ color: 0xff8a2a, transparent: !0, opacity: 0, depthWrite: !1, blending: 2, fog: !1 });
   const add = [];
   root.traverse((m) => {
     if (!m.isMesh) return;
     const p = m.name.split("_"), k = p[1];
-    if (k !== "flame" && k !== "flamecore") return;
-    const zc = p[0].slice(-1) === "R" ? 0.32 : -0.32;
-    m.geometry.translate(3.3, -0.8, -zc);          // pivot flame at the nozzle so scaling grows it backwards
-    m.position.set(-3.3, 0.8, zc);
-    J.fx.push(m);
-    if (k === "flame") { const h = new r.B(new r.Q(1, 10, 8), J.haloMat); h.position.set(-3.7, 0.8, zc); add.push(h); }
+    if (k === "flame" || k === "flamecore") {
+      J.engineAttached = true;
+      const zc = p[0].slice(-1) === "R" ? 0.32 : -0.32;
+      if (!m.userData.__frFlamePivoted) {
+        m.geometry.translate(3.3, -0.8, -zc);
+        m.position.set(-3.3, 0.8, zc);
+        m.userData.__frFlamePivoted = true;
+      }
+      m.visible = false;
+      J.fx.push(m);
+      if (k === "flame") { const h = new r.B(new r.Q(1, 10, 8), J.haloMat); h.position.set(-3.7, 0.8, zc); add.push(h); }
+    }
+    if (k === "propa" || k === "propb" || /noseblade|propeller/i.test(m.name)) J.blades.push(m);
   });
   for (const h of add) { root.add(h); J.halos.push(h); }
+  J.on = !!(def && def.jet) || J.engineAttached;
 }
 function __frJetUpdate(vc, dt) {
   const d = vc.vehicleDef, J = __frJ;
-  if (!d || !d.jet) { window.__FR_JET = null; return; }
-  const n = !!input.key.KeyN;
-  if (n && !J.was) J.on = !J.on;
-  J.was = n;
-  if (J.on) z.drive = Math.max(z.drive, z.metrics.accel * 3);          // afterburner thrust
+  if (!d || (!d.jet && !J.engineAttached)) { window.__FR_JET = null; return; }
+  J.on = true;
+  if (J.on) z.drive = Math.max(z.drive, z.metrics.accel * 3.5);
+  const mph = Math.max(0, z.speed || 0) * 2.23694;
+  const fireVisible = J.on && mph >= 100;
   const night = z.headlights ? 1 : 0;
-  const tgt = J.on ? 1 : z.drive > 0 ? 0.18 : 0;
-  J.lvl += (tgt - J.lvl) * Math.min(1, 8 * dt);
-  const fl = J.lvl * (0.85 + Math.random() * 0.3), vis = J.lvl > 0.03;
+  const target = fireVisible ? 1 : 0;
+  J.lvl += (target - J.lvl) * Math.min(1, 8 * dt);
+  const fl = J.lvl * (0.85 + Math.random() * 0.3), vis = fireVisible && J.lvl > 0.03;
   for (const f of J.fx) { f.visible = vis; f.scale.set(0.05 + fl * 1.2, 0.5 + 0.5 * J.lvl, 0.5 + 0.5 * J.lvl); }
   if (J.haloMat) J.haloMat.opacity = J.lvl * (night ? 0.75 : 0.18) * (0.85 + Math.random() * 0.3);
   const hs = 0.8 + 1.3 * J.lvl * (1 + night * 1.2);
   for (const h of J.halos) { h.visible = vis; h.scale.set(hs, hs, hs); }
+  for (const b of J.blades) b.rotation.z += Math.max(0.5, Math.abs(z.speed || 0) * 0.5) * dt * (J.on ? 12 : 1);
   Cl.jetglow.emissiveIntensity = 0.2 + J.lvl * (2 + 3 * night);
-  window.__FR_JET = { on: J.on, lvl: J.lvl };
+  window.__FR_JET = { on: J.on, lvl: J.lvl, mph, fireVisible };
 }
 // ===== [/FAST ROADS: JET] =====
 // per-frame flight state (called at the top of updateWheelMotion)
@@ -17783,6 +17792,7 @@ const Il = [2.23694, 3.59999],
         }
         updateWheelMotion(e) {
           let t;
+          __frJetUpdate(this, e);
           for (t of ((this.printDebug = !this.printDebug), __frAcPrep(this, e),
           this.wheelDown
             .set(0, -z.wheels.radius, 0)
