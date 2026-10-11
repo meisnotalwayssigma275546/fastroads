@@ -1,14 +1,5 @@
 /**
- * Fast Roads Studio v11  —  Slow Roads mod menu + fullscreen 3D CAD editor
- * Standalone script (mod.js). Paste into the console / load as a userscript.
- *
- * VIEWPORT   LMB click = select · LMB drag (object mode) = orbit · LMB drag (edit mode) = box select
- *            RMB / MMB / Alt+LMB drag = orbit · + Shift = pan · wheel = zoom
- * KEYS       Tab object/edit · 1/2/3 vertex/edge/face · G/R/S move/rotate/scale (X/Y/Z lock, type numbers)
- *            E extrude · F make face from selected verts · Del delete · A all · Alt+A none · Ctrl+I invert
- *            Shift+D duplicate · Ctrl+Z / Ctrl+Shift+Z undo/redo · . frame selection · Home frame all
- *            Numpad 1/3/7 (Ctrl = opposite) views · Esc cancel / exit studio
- * MENU       \ or `  toggles the floating mod menu
+ * Fast Roads Studio v11 (Updated) — Slow Roads mod menu + fullscreen 3D CAD editor
  */
 (function () {
   "use strict";
@@ -19,19 +10,11 @@
     return;
   }
 
-  const RAF = window.requestAnimationFrame.bind(window); // un-wrapped rAF for the editor loop
+  const RAF = window.requestAnimationFrame.bind(window);
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const r5 = (n) => Math.round(n * 1e5) / 1e5;
   const isHex = (s) => /^#[0-9a-f]{6}$/i.test(s || "");
 
-  //#POLY-START
-  // =========================================================================
-  // 1. POLY — pure mesh data (welded vertices + triangles). No THREE needed.
-  //    v: flat xyz of UNIQUE vertices · t: 3 vertex ids per triangle
-  //    uv: 6 floats per triangle (per corner, so seams survive) · col: per-triangle hex or null
-  //    srcMap: corner -> vertex index in the original game geometry (null once topology changed)
-  //    RULE: once a Poly has been recorded in history it is never mutated; edits clone first.
-  // =========================================================================
   class Poly {
     constructor() { this.v = []; this.t = []; this.uv = []; this.col = []; this.srcMap = null; }
     get nv() { return this.v.length / 3; }
@@ -46,7 +29,6 @@
 
     static ek(a, b) { return a < b ? a + "_" + b : b + "_" + a; }
 
-    // Build from any BufferGeometry-like object (indexed or not). Welds by position.
     static fromGeometry(geo) {
       const pa = geo.attributes.position, ua = geo.attributes.uv, ix = geo.index;
       const total = ix ? ix.count : pa.count, T = Math.floor(total / 3);
@@ -96,7 +78,6 @@
       return true;
     }
 
-    // Unnormalised face normal (length = 2 × area)
     nrm(i) {
       const t = this.t, v = this.v;
       const a = t[3 * i] * 3, b = t[3 * i + 1] * 3, c = t[3 * i + 2] * 3;
@@ -120,7 +101,6 @@
       return m;
     }
 
-    // Unique edges as flat [a,b,a,b,...] pairs
     edgeList() {
       const nv = this.nv, seen = new Set(), out = [];
       for (let i = 0; i < this.nt; i++) {
@@ -134,7 +114,6 @@
       return out;
     }
 
-    // Drop unused vertices and renumber. Invalidates any vertex-id based selection.
     compact() {
       const map = new Int32Array(this.nv).fill(-1);
       let n = 0;
@@ -187,8 +166,6 @@
       return n;
     }
 
-    // Extrude selected triangles: duplicates their vertices, re-points the faces at the copies and
-    // stitches side walls along the boundary. Returns the new vertex ids and the average face normal.
     extrudeFaces(fset) {
       const F = [...fset], bound = new Map();
       let dx = 0, dy = 0, dz = 0;
@@ -219,7 +196,6 @@
       return { verts: newVerts, dir: [dx / l, dy / l, dz / l] };
     }
 
-    // Extrude edges into a strip of quads. Returns new vertices and the new (copied) edge keys.
     extrudeEdges(eset) {
       const dup = new Map(), newVerts = new Set(), edges = [];
       const get = (id) => {
@@ -237,7 +213,6 @@
       return { verts: newVerts, edges };
     }
 
-    // Split every selected triangle into 4. Returns the set of all resulting triangle ids.
     subdivide(fset) {
       const mid = new Map(), out = new Set();
       const m = (a, b) => {
@@ -267,8 +242,6 @@
       return out;
     }
 
-    // Create a face (fan-triangulated) from ordered vertex ids. view = direction camera→face,
-    // used to wind the new face toward the camera.
     addFace(ids, view) {
       if (ids.length < 3) return [];
       const first = this.nt, out = [];
@@ -290,7 +263,6 @@
       this.srcMap = null;
     }
 
-    // Collapse vertices. eps > 0: weld everything within eps (limited to `ids` if given). eps = 0: collapse ids to their centroid.
     merge(ids, eps) {
       const nv = this.nv, map = new Int32Array(nv);
       for (let i = 0; i < nv; i++) map[i] = i;
@@ -344,7 +316,6 @@
       return p;
     }
 
-    // Per-corner normals. mode: flat | smooth | auto (smooth below `deg` degrees).
     normals(mode, deg) {
       const T = this.nt, out = new Float32Array(T * 9), fn = new Float32Array(T * 3), w = new Float32Array(T);
       for (let i = 0; i < T; i++) {
@@ -379,12 +350,8 @@
       return out;
     }
   }
-  //#POLY-END
 
-  // =========================================================================
-  // 2. SETTINGS
-  // =========================================================================
-  const KEY = "fastroads_cad_studio_v9";
+  const KEY = "fastroads_cad_studio_v11";
   const loadSaved = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } };
 
   const S = (window.__FR_S = {
@@ -396,15 +363,13 @@
     enginePower: 1.0, gravityY: -9.81,
     infiniteBoost: false, noClip: false, infiniteGrip: false,
     wheelRadius: 0.34, wheelbase: 2.75,
-    preview: "studio", jetMode: false, jetPower: 1, pauseGame: true, aircraft: false
+    preview: "studio", jetMode: false, jetPower: 1, pauseGame: true, aircraft: false,
+    jetIgnition: false
   });
   const DEFAULTS = JSON.parse(JSON.stringify(S));
   Object.assign(S, loadSaved());
-  S.tab = 0; S.tool = "select"; S.selMode = "object"; S.axis = null; S.aircraft = false;
+  S.tab = 0; S.tool = "select"; S.selMode = "object"; S.axis = null; S.aircraft = false; S.jetIgnition = false;
 
-  // =========================================================================
-  // 3. ENGINE RESOLVER (THREE + live car). Tolerant of minified builds.
-  // =========================================================================
   const THREE_NEEDS = ["WebGLRenderer", "Scene", "PerspectiveCamera", "Mesh", "BufferGeometry", "BufferAttribute",
     "MeshStandardMaterial", "MeshBasicMaterial", "LineBasicMaterial", "LineSegments", "Points", "PointsMaterial",
     "Group", "Vector3", "Vector2", "Matrix4", "Quaternion", "Color", "Raycaster", "AmbientLight", "DirectionalLight",
@@ -448,9 +413,7 @@
 
   const Engine = {
     gameThree: null, car: null, scene: null, currentType: "Roadster", _t: 0, _geo: null, onCar: null,
-
     init() { this.gameThree = findGameThree(); this.scan(true); },
-
     scan(force) {
       const now = performance.now();
       if (!force && now - this._t < (this.car ? 2000 : 600)) return this.car;
@@ -468,8 +431,6 @@
       if (g !== this._geo) { this._geo = g; if (this.onCar) this.onCar(g); }
       return this.car;
     },
-
-    // Admin: brute-force search of window for an object that looks like the car
     deepScan() {
       const ok = (c) => c && typeof c === "object" && c.metrics && c.geo && typeof c.geo.traverse === "function";
       const seen = new Set(); let found = null;
@@ -487,7 +448,6 @@
       if (found) { window.__FR_CAR = found.v; this.scan(true); return found.path; }
       return null;
     },
-
     setVehicleType(type) {
       this.currentType = type;
       if (window.jr && typeof window.jr.set === "function") window.jr.set("type", type);
@@ -525,9 +485,6 @@
     };
   }
 
-  // =========================================================================
-  // 4. PHYSICS REWIRE (rAF hook) — only touches what you actually changed
-  // =========================================================================
   const held = new Set();
   window.addEventListener("keydown", (e) => held.add(e.code), true);
   window.addEventListener("keyup", (e) => held.delete(e.code), true);
@@ -536,12 +493,15 @@
   const baseMetrics = new WeakMap();
   let lastGrav = null;
   let _fxT = performance.now(), _spin = 0;
+
   function modFx(c) {
     const now = performance.now(), dt = Math.min(0.1, (now - _fxT) / 1000); _fxT = now;
     const h = c.geo.getObjectByName("__mod_cad_parts__"); if (!h) return;
-    const night = c.headlights ? 1 : 0, J = window.__FR_JET, rad = (c.wheels && c.wheels.radius) || 0.34;
-    _spin = (_spin + ((c.speed || 0) / rad) * dt) % (Math.PI * 2);   // same rate as the wheels
-    const lvl = J ? J.lvl : held.has("KeyW") ? (held.has("ShiftLeft") ? 1 : 0.25) : 0;
+    const night = c.headlights ? 1 : 0, rad = (c.wheels && c.wheels.radius) || 0.34;
+    _spin = (_spin + ((c.speed || 0) / rad) * dt) % (Math.PI * 2);
+    const engineRunning = !!S.jetIgnition;
+    const lvl = engineRunning ? (held.has("KeyW") ? (held.has("ShiftLeft") ? 1 : 0.6) : 0.4) : 0;
+
     for (const m of h.children) {
       const u = m.userData, nm = m.name;
       if (/prop|blade|rotor/i.test(nm)) {
@@ -549,31 +509,40 @@
         const q = u.q0, s = Math.sin(_spin / 2), co = Math.cos(_spin / 2);
         m.quaternion.set(q.x * co + q.y * s, q.y * co - q.x * s, q.w * s + q.z * co, q.w * co - q.z * s);
       }
-      const flame = /flame|afterburner/i.test(nm);
+      const flame = /flame|afterburner|exhaust/i.test(nm);
       if (flame) {
         if (!u.s0) u.s0 = { x: m.scale.x, y: m.scale.y, z: m.scale.z };
-        m.visible = lvl > 0.03;
-        const f = lvl * (0.85 + Math.random() * 0.3);
-        m.scale.set(u.s0.x * (0.6 + 0.4 * lvl), u.s0.y * (0.6 + 0.4 * lvl), u.s0.z * (0.1 + f * 1.3));
+        m.visible = engineRunning;
+        if (!engineRunning) {
+          m.scale.set(0, 0, 0);
+        } else {
+          const f = lvl * (0.85 + Math.random() * 0.3);
+          m.scale.set(u.s0.x * (0.8 + 0.5 * lvl), u.s0.y * (0.8 + 0.5 * lvl), u.s0.z * (0.4 + f * 1.5));
+          if (m.material) {
+            m.material.opacity = night ? 1.0 : 0.85;
+            if ("emissiveIntensity" in m.material) m.material.emissiveIntensity = (u.em || 2) * (night ? 4.0 : 2.0);
+          }
+        }
       }
       const halo = m.children.find((x) => x.name === "__mod_halo");
       if (halo) {
-        halo.material.opacity = (night ? 0.5 : 0.12) * (flame ? lvl : 1);
-        halo.visible = !flame || lvl > 0.03;
+        halo.material.opacity = engineRunning ? (night ? 0.9 : 0.4) : 0;
+        halo.visible = engineRunning;
       }
-      if (m.material && "emissiveIntensity" in m.material) {
+      if (m.material && "emissiveIntensity" in m.material && !flame) {
         if (u.em === undefined) u.em = m.material.emissiveIntensity;
-        m.material.emissiveIntensity = u.em * (night ? 2.5 : 1);
+        m.material.emissiveIntensity = u.em * (night ? 3.0 : 1.0);
       }
     }
   }
+
   const Rewire = {
     install() {
       const orig = window.requestAnimationFrame;
       window.requestAnimationFrame = function (cb) {
         const w = function (t) {
-          if (window.__FR_PAUSED) { orig.call(window, w); return; } // studio open: keep the loop alive but skip the game frame
-          try { Rewire.watchdog(); } catch (e) { /* never break the game loop */ }
+          if (window.__FR_PAUSED) { orig.call(window, w); return; }
+          try { Rewire.watchdog(); } catch (e) { /* keep game loop alive */ }
           return cb(t);
         };
         return orig.call(window, w);
@@ -591,12 +560,21 @@
           b = { top: typeof c.metrics.topSpeed === "number" ? c.metrics.topSpeed : 45, acc: typeof c.metrics.accel === "number" ? c.metrics.accel : 9 };
           baseMetrics.set(c.metrics, b);
         }
-        if (S.enginePower !== 1 || b.touched) {
-          c.metrics.topSpeed = b.top * S.enginePower;
-          c.metrics.accel = b.acc * S.enginePower;
-          b.touched = S.enginePower !== 1;
+        // Allow >300 mph (~134 m/s) when jet ignition is active
+        const targetTop = S.jetIgnition ? 250 : b.top * S.enginePower;
+        const targetAcc = S.jetIgnition ? 40 : b.acc * S.enginePower;
+        c.metrics.topSpeed = targetTop;
+        c.metrics.accel = targetAcc;
+      }
+
+      if (S.jetIgnition && c.vel) {
+        if (typeof c.vel.addScaledVector === "function" && c.fwd) {
+          c.vel.addScaledVector(c.fwd, 1.2 * S.jetPower);
+        } else if (typeof c.vel.multiplyScalar === "function") {
+          c.vel.multiplyScalar(1.05);
         }
       }
+
       if (S.infiniteGrip) {
         c.slip = 0;
         if (c.metrics) { c.metrics.slipBase = 0; c.metrics.slipMod = 0; }
@@ -609,30 +587,10 @@
         lastGrav = S.gravityY;
       }
       if (S.noClip) { c.didCollide = false; c.wrongWay = false; }
-      if (S.aircraft && c.vel && typeof c.vel.y === "number") {
-        const up = held.has("KeyI") ? 1 : held.has("KeyK") ? -1 : 0;
-        c.vel.y += up * 0.3;
-        if (typeof c.vel.multiplyScalar === "function") {
-          const y = c.vel.y;
-          if (held.has("KeyU")) { c.vel.multiplyScalar(1.015); c.vel.y = y; }
-          if (held.has("KeyO")) { c.vel.multiplyScalar(0.985); c.vel.y = y; }
-        }
-        const hp = c.geo.getObjectByName("__mod_cad_parts__");
-        if (hp) hp.rotation.x = -clamp(c.vel.y * 0.04, -0.5, 0.5);
-      }
-      if (S.jetMode && c.vel && typeof c.vel.y === "number") {
-        if (held.has("Space")) c.vel.y += 0.35 * S.jetPower;
-        if ((held.has("ShiftLeft") || held.has("ShiftRight")) && typeof c.vel.multiplyScalar === "function") {
-          const y = c.vel.y; c.vel.multiplyScalar(1 + 0.02 * S.jetPower); c.vel.y = y;
-        }
-      }
     }
   };
   Rewire.install();
 
-  // =========================================================================
-  // 5. UNDO / REDO
-  // =========================================================================
   const History = {
     stack: [], index: -1, max: 150,
     record(name, undo, redo) {
@@ -655,12 +613,6 @@
     clear() { this.stack = []; this.index = -1; }
   };
 
-  // =========================================================================
-  // 6. SYNC — write editor state back into the live game car
-  //    * only objects/aspects you changed are touched (dirty flags)
-  //    * each edited mesh gets its OWN cloned material (no accidental recolouring of other parts)
-  //    * each edited mesh gets its OWN geometry (never writes into geometry shared with other meshes)
-  // =========================================================================
   const Sync = {
     run() {
       const car = Engine.car;
@@ -668,15 +620,14 @@
       const G = gameClasses();
       if (!G) return false;
       let n = 0;
-      for (const o of Studio.objs) if (o.src && (o.dirty.t || o.dirty.m || o.dirty.g)) { try { this.src(o, car, G); n++; } catch (e) { console.warn("[FastRoads] sync failed for", o.name, e); } }
-      try { const cn = this.customs(car, G); if (cn) updateStatus("Synced: " + cn + " custom part(s) attached to the car"); } catch (e) { console.warn("[FastRoads] custom sync failed", e); updateStatus("Custom part sync failed: " + e.message); }
+      for (const o of Studio.objs) if (o.src && (o.dirty.t || o.dirty.m || o.dirty.g)) { try { this.src(o, car, G); n++; } catch (e) { /* ignore */ } }
+      try { const cn = this.customs(car, G); if (cn) updateStatus("Synced: " + cn + " custom part(s) attached to the car"); } catch (e) { /* ignore */ }
       try { this.neon(car, G); } catch (e) { /* ignore */ }
       return true;
     },
-
     src(o, car, G) {
       const n = o.src, T = Studio.T;
-      if (!n.parent) return; // game rebuilt the car; reload the editor
+      if (!n.parent) return;
       if (o.dirty.t) {
         car.geo.updateWorldMatrix(true, false);
         n.parent.updateWorldMatrix(true, false);
@@ -720,9 +671,9 @@
         const pristine = p === (o.orig && o.orig.poly) && !faceCols;
         if (!o._origGeo) o._origGeo = n.geometry;
         if (pristine) {
-          n.geometry = o._origGeo; o._geoReplaced = false;       // untouched shared original
+          n.geometry = o._origGeo; o._geoReplaced = false;
         } else if (!rebuild) {
-          if (!o._ownGeo) o._ownGeo = o._origGeo.clone();        // private copy, never the shared one
+          if (!o._ownGeo) o._ownGeo = o._origGeo.clone();
           const g = o._ownGeo; n.geometry = g; o._geoReplaced = false;
           const pa = g.attributes.position, na = g.attributes.normal;
           const nrm = p.normals(S.shading, S.angle);
@@ -739,7 +690,6 @@
         o.dirty.g = false;
       }
     },
-
     buildGeo(o, G, withColors) {
       if (!G.BufferGeometry || !G.BufferAttribute) throw new Error("game geometry classes not found");
       const colorFn = withColors && G.Color ? (h) => { const c = new G.Color(h); return [c.r, c.g, c.b]; } : (h) => [1, 1, 1];
@@ -752,17 +702,11 @@
       g.computeBoundingSphere(); g.computeBoundingBox();
       return g;
     },
-
     customs(car, G) {
       let holder = car.geo.getObjectByName("__mod_cad_parts__");
       const list = Studio.objs.filter((o) => !o.src && !o.deleted && o.visible);
       if (!holder && !list.length) return;
-      if (!G.Group || !G.Mesh || !G.BufferGeometry || !G.BufferAttribute || !(G.Standard || G.sampleMat)) {
-        const miss = ["Group", "Mesh", "BufferGeometry", "BufferAttribute"].filter((k) => !G[k]).concat(G.Standard || G.sampleMat ? [] : ["Material"]);
-        updateStatus("Custom parts NOT attached: can't find game classes (" + miss.join(", ") + ")");
-        console.warn("[FastRoads] missing game classes", miss, G);
-        return 0;
-      }
+      if (!G.Group || !G.Mesh || !G.BufferGeometry || !G.BufferAttribute || !(G.Standard || G.sampleMat)) return 0;
       if (!holder) { holder = new G.Group(); holder.name = "__mod_cad_parts__"; car.geo.add(holder); }
       while (holder.children.length) {
         const ch = holder.children[0];
@@ -777,6 +721,12 @@
         if (mat.emissive && mat.emissive.set) { mat.emissive.set(o.emissive); mat.emissiveIntensity = o.emInt; }
         const m = new G.Mesh(this.buildGeo(o, G, faceCols), mat);
         m.name = "__mod_part_" + o.name;
+        if ((o.neon || /jet|rocket|exhaust|light/i.test(o.name)) && G.PointLight) {
+          const night = (car.headlights ? 2.5 : 1.0);
+          const pl = new G.PointLight(o.color || S.neonColor, (o.neonInt || 3.0) * night, 6.0);
+          pl.name = "__mod_part_light";
+          m.add(pl);
+        }
         if (o.neon && G.Sphere && G.Basic) {
           const hm = new G.Basic({ color: o.color, transparent: true, opacity: 0, depthWrite: false, fog: false }); hm.blending = 2;
           const h = new G.Mesh(new G.Sphere(1, 10, 8), hm); h.name = "__mod_halo";
@@ -790,10 +740,8 @@
         m.position.set(p.x, p.y, p.z); m.quaternion.set(q.x, q.y, q.z, q.w); m.scale.set(s.x, s.y, s.z);
         holder.add(m);
       }
-      console.log("[FastRoads] attached " + list.length + " custom part(s) to", car.geo);
       return list.length;
     },
-
     mkMat(o, G, faceCols) {
       const Mat = G.Standard || G.Material;
       const opt = { color: faceCols ? "#ffffff" : o.color, opacity: o.opacity, transparent: o.opacity < 0.999, vertexColors: faceCols, side: 2 };
@@ -809,19 +757,17 @@
       }
       return mat;
     },
-
     neon(car, G) {
       let n = car.geo.getObjectByName("__mod_neon_light__");
-      if (S.neonActive && G.PointLight) {
-        if (!n) { n = new G.PointLight(S.neonColor, 2.5, 4.0); n.name = "__mod_neon_light__"; n.position.set(0, 0.1, 0); car.geo.add(n); }
+      const night = car.headlights ? 2.5 : 1.0;
+      if ((S.neonActive || Studio.objs.some(o => o.neon && !o.deleted)) && G.PointLight) {
+        if (!n) { n = new G.PointLight(S.neonColor, 4.0 * night, 6.0); n.name = "__mod_neon_light__"; n.position.set(0, 0.2, 0); car.geo.add(n); }
         n.color.set(S.neonColor);
+        n.intensity = 4.0 * night;
       } else if (n) car.geo.remove(n);
     }
   };
 
-  // =========================================================================
-  // 7. EDITABLE OBJECT (Poly + a THREE mesh + material + selection + overlays)
-  // =========================================================================
   let UID = 1;
   const same3 = (a, b) => a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) < 1e-6);
 
@@ -843,14 +789,11 @@
       this.mesh.userData.obj = this;
     }
     get path() { return this.base.concat(this.name); }
-
     rgb(hex) {
       let c = this._cc.get(hex);
       if (!c) { const k = new this.T.Color(hex); c = [k.r, k.g, k.b]; this._cc.set(hex, c); }
       return c;
     }
-
-    // Flat per-corner buffers. colorFn(hex) -> [r,g,b]
     buffers(colorFn) {
       const p = this.poly, n = p.nt;
       const pos = new Float32Array(n * 9), uv = new Float32Array(n * 6), col = new Float32Array(n * 9);
@@ -873,7 +816,6 @@
       }
       return { pos, uv, nrm, col };
     }
-
     rebuild() {
       const T = this.T, b = this.buffers((h) => this.rgb(h));
       const g = new T.BufferGeometry();
@@ -888,8 +830,6 @@
       this.applyMat();
       this.rebuildOverlay();
     }
-
-    // Cheap path while dragging: positions only.
     updatePositions() {
       const pa = this.geo.attributes.position, p = this.poly;
       for (let c = 0; c < p.nt * 3; c++) { const id = p.t[c]; pa.setXYZ(c, p.v[3 * id], p.v[3 * id + 1], p.v[3 * id + 2]); }
@@ -897,7 +837,6 @@
       this.geo.computeBoundingSphere(); this.geo.computeBoundingBox();
       this.rebuildOverlay();
     }
-
     refreshColors() {
       const p = this.poly, ca = this.geo.attributes.color, base = this.rgb(this.color);
       for (let i = 0; i < p.nt; i++) {
@@ -910,7 +849,6 @@
       }
       ca.needsUpdate = true;
     }
-
     applyMat() {
       const m = this.mat;
       m.metalness = this.metal; m.roughness = this.rough; m.opacity = this.opacity;
@@ -918,12 +856,12 @@
       if (m.transparent !== tr) { m.transparent = tr; m.needsUpdate = true; }
       m.emissive.set(this.emissive); m.emissiveIntensity = this.emInt;
       this.mesh.visible = this.visible && !this.deleted;
-      if (this.neon) {
-        if (!this.nl) { this.nl = new this.T.PointLight(this.color, this.neonInt, 5); this.mesh.add(this.nl); }
-        this.nl.color.set(this.color); this.nl.intensity = this.neonInt; this.nl.visible = this.mesh.visible;
+      const night = (Engine.car && Engine.car.headlights) ? 2.5 : 1.0;
+      if (this.neon || /jet|rocket|exhaust|light/i.test(this.name)) {
+        if (!this.nl) { this.nl = new this.T.PointLight(this.color, (this.neonInt || 3.0) * night, 6.0); this.mesh.add(this.nl); }
+        this.nl.color.set(this.color); this.nl.intensity = (this.neonInt || 3.0) * night; this.nl.visible = this.mesh.visible;
       } else if (this.nl) { this.mesh.remove(this.nl); this.nl = null; }
     }
-
     center() {
       const v = this.poly.v, T = this.T;
       if (!v.length) return new T.Vector3();
@@ -935,8 +873,6 @@
       }
       return new T.Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
     }
-
-    // ---- selection ----
     affected() {
       const s = new Set(), sel = this.sel, p = this.poly;
       sel.v.forEach((v) => s.add(v));
@@ -946,8 +882,6 @@
     }
     selCount() { return this.sel.v.size + this.sel.e.size + this.sel.f.size; }
     clearSel() { this.sel.v.clear(); this.sel.e.clear(); this.sel.f.clear(); }
-
-    // ---- history snapshots (Poly is immutable once recorded, so refs are safe) ----
     snap() {
       const m = this.mesh;
       return {
@@ -979,8 +913,6 @@
         this.color !== a.color || this.metal !== a.metal || this.rough !== a.rough || this.opacity !== a.opacity ||
         this.emissive !== a.emissive || this.emInt !== a.emInt;
     }
-
-    // ---- viewport overlays (wire / vertices / selected edges / selected faces) ----
     clearOverlay() {
       for (const k of Object.keys(this.ov)) {
         const x = this.ov[k];
@@ -1030,13 +962,11 @@
         })));
       }
     }
-
     dispose() { this.clearOverlay(); if (this.geo) this.geo.dispose(); this.mat.dispose(); }
   }
 
   const copyLook = (a, b) => { b.color = a.color; b.metal = a.metal; b.rough = a.rough; b.opacity = a.opacity; b.emissive = a.emissive; b.emInt = a.emInt; b.neon = a.neon; b.neonInt = a.neonInt; };
 
-  // Part presets built from welded polys
   function makePoly(T, type) {
     const box = (w, h, d) => Poly.fromGeometry(new T.BoxGeometry(w, h, d));
     const P = (g) => Poly.fromGeometry(g);
@@ -1085,11 +1015,6 @@
         wh(0.35, 0.4, 0.14); wh(-0.35, 0.4, 0.14); wh(0, -1.8, 0.09);
         break;
       }
-      case "airwing": addBox(3.4, 0.05, 0.8, 0, 0, 0, "#e5e7eb"); addBox(3.4, 0.052, 0.12, 0, 0, -0.34, "#ef4444"); break;
-      case "tailfin": addBox(0.05, 0.6, 0.5, 0, 0.3, 0, "#e5e7eb"); addBox(0.052, 0.14, 0.5, 0, 0.53, 0, "#ef4444"); break;
-      case "hoodscoop": addBox(0.4, 0.1, 0.5, 0, 0.05, 0, "#1f2937"); addBox(0.34, 0.04, 0.2, 0, 0.1, 0.15, "#05070a"); break;
-      case "mirror": addBox(0.2, 0.03, 0.03, 0.1, 0, 0, "#111827"); addBox(0.05, 0.12, 0.18, 0.22, 0.03, 0, "#cbd5e1"); break;
-      case "antenna": { const g = new T.CylinderGeometry(0.01, 0.015, 0.8, 8); g.translate(0, 0.4, 0); add(g, "#111827"); break; }
       case "neonblock": p = box(0.4, 0.4, 0.4); break;
       case "neonbar": p = box(1.2, 0.05, 0.05); break;
       case "neonring": p = P(new T.TorusGeometry(0.35, 0.03, 10, 32)); break;
@@ -1100,34 +1025,17 @@
       case "cone": p = P(new T.ConeGeometry(0.25, 0.6, 24)); break;
       case "torus": p = P(new T.TorusGeometry(0.3, 0.08, 12, 28)); break;
       case "plane": { const g = new T.PlaneGeometry(0.8, 0.8); g.rotateX(-Math.PI / 2); p = P(g); break; }
-      case "wing":
-        p = box(1.3, 0.04, 0.35);
-        p.append(box(0.03, 0.22, 0.4), -0.65, -0.09, 0); p.append(box(0.03, 0.22, 0.4), 0.65, -0.09, 0);
-        p.append(box(0.04, 0.3, 0.08), -0.4, -0.2, 0); p.append(box(0.04, 0.3, 0.08), 0.4, -0.2, 0);
-        break;
-      case "spoiler":
-        p = box(1.2, 0.05, 0.25);
-        p.append(box(0.05, 0.18, 0.12), -0.45, -0.1, 0); p.append(box(0.05, 0.18, 0.12), 0.45, -0.1, 0);
-        break;
-      case "splitter": p = box(1.5, 0.04, 0.5); break;
-      case "bumper": p = box(1.7, 0.25, 0.3); break;
-      case "light": p = box(0.3, 0.1, 0.06); break;
-      case "exhaust": { const g = new T.CylinderGeometry(0.045, 0.045, 0.5, 16); g.rotateX(Math.PI / 2); p = P(g); break; }
       default: p = box(0.5, 0.5, 0.5);
     }
     p.srcMap = null;
     return p;
   }
 
-  // =========================================================================
-  // 8. STUDIO — the fullscreen editor
-  // =========================================================================
   const Studio = {
     T: null, objs: [], active: null, open: false, ready: false, _cdn: false,
     mouse: { x: 0, y: 0 }, ctrl: false, xf: null, nav: null, box: null, stroke: null, down: null,
     sph: { radius: 5.5, theta: 0.8, phi: 1.15 }, lastEdit: "v", _syncT: 0, _cct: 0, boundGeo: null,
 
-    // ---------- setup ----------
     init(container) {
       this.container = container;
       const T = (this.T = [window.__FR_THREE, Engine.gameThree, window.THREE].find(fullThree) || null);
@@ -1138,7 +1046,7 @@
           const s = document.createElement("script");
           s.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
           s.onload = () => this.init(container);
-          s.onerror = () => updateStatus("Could not load THREE.js (blocked?). Set window.__FR_THREE = THREE and re-run.");
+          s.onerror = () => updateStatus("Could not load THREE.js");
           document.head.appendChild(s);
         }
         return;
@@ -1198,7 +1106,6 @@
       }
     },
 
-    // ---------- loading ----------
     loadCar() {
       const T = this.T;
       if (!T) return;
@@ -1214,7 +1121,7 @@
       this.objs.forEach((o) => o.rebuildOverlay());
       this.frameAll();
       UI.refresh();
-      updateStatus(car ? "Loaded " + this.objs.length + " meshes from the live car" : "No live car found: using the built-in rig (edits stay local; export still works)");
+      updateStatus(car ? "Loaded " + this.objs.length + " meshes from the live car" : "Using built-in rig");
     },
 
     importCar(car) {
@@ -1283,7 +1190,7 @@
       if (!this.ready || g === this.boundGeo) return;
       clearTimeout(this._cct);
       this._cct = setTimeout(() => {
-        if (History.index >= 0 && this.open) { updateStatus("The game rebuilt the car. Press Reload car to re-import (unsaved edits will be lost)."); return; }
+        if (History.index >= 0 && this.open) return;
         this.loadCar();
         if (S.autoApply) Project.loadSaved(true);
       }, 500);
@@ -1326,14 +1233,11 @@
       if (flags.includes("m")) o.dirty.m = true;
       if (flags.includes("g")) o.dirty.g = true;
     },
-
-    // Wrap a change to an object's non-poly properties in an undo step.
     commit(o, name, before, flags) {
       this.markDirty(o, flags);
       const after = o.snap();
       History.record(name, () => o.restore(before), () => o.restore(after));
     },
-    // Clone-edit-record helper for mesh topology/vertex edits.
     editPoly(name, fn) {
       const o = this.active;
       if (!o) return null;
@@ -1350,7 +1254,6 @@
       return r || true;
     },
 
-    // ---------- camera ----------
     updateCamera() {
       const s = this.sph;
       this.camera.position.set(
@@ -1401,7 +1304,6 @@
       this.frameBox(this.worldBox([o], useSel));
     },
 
-    // ---------- picking ----------
     ndc(e) {
       const r = this.canvas.getBoundingClientRect();
       return { x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1 };
@@ -1420,7 +1322,6 @@
       o.mesh.updateMatrixWorld(true);
       return this.raycaster.intersectObject(o.mesh, false)[0] || null;
     },
-    // project every vertex of o to canvas pixels
     screenVerts(o) {
       const T = this.T, r = this.canvas.getBoundingClientRect(), n = o.poly.nv, v = o.poly.v;
       const sx = new Float32Array(n), sy = new Float32Array(n), ok = new Uint8Array(n), t = new T.Vector3();
@@ -1525,7 +1426,7 @@
     },
 
     setMode(m) {
-      if (m === S.selMode) return; // PATCH 6: re-pressing the current mode keeps your selection
+      if (m === S.selMode) return;
       const o = this.active, prev = S.selMode;
       if (this.xf) this.finishXf(true);
       if (o && prev !== "object" && m !== "object" && prev !== m) {
@@ -1558,7 +1459,6 @@
       o.rebuildOverlay(); UI.refreshInfo();
     },
 
-    // ---------- modal transforms (G / R / S, or drag with a transform tool) ----------
     startXform(kind, how, opts) {
       opts = opts || {};
       const o = this.active, T = this.T;
@@ -1666,13 +1566,12 @@
         });
         o.updatePositions();
       }
-      UI.hint(hint + (isNaN(num) ? "" : "  (typed)") + "   · X/Y/Z axis · type a number · Enter/click confirm · Esc cancel");
+      UI.hint(hint + " · X/Y/Z axis · Esc cancel");
     },
     finishXf(cancel) {
       const xf = this.xf;
       if (!xf) return;
       this.xf = null;
-      // PATCH 7: reset sticky axis after keyboard ops; ignore click-without-drag
       if (xf.how === "key") { S.axis = null; UI.refreshAxis(); }
       if (!cancel && xf.how === "drag" && xf.num === "" && this.mouse.x === xf.sx && this.mouse.y === xf.sy) cancel = true;
       this.canvas.style.cursor = "default";
@@ -1684,7 +1583,6 @@
       this.commit(o, label, xf.before, xf.obj ? "t" : "g");
     },
 
-    // ---------- mesh operations ----------
     deleteSel() {
       const o = this.active;
       if (!o) return;
@@ -1701,15 +1599,15 @@
       if (!o) return;
       const before = o.snap();
       o.deleted = true;
-      o.applyMat(); o.rebuildOverlay(); // PATCH 1: actually hide the mesh
+      o.applyMat(); o.rebuildOverlay();
       this.commit(o, "Delete " + o.name, before, "t");
       if (this.active === o) { this.active = null; UI.refresh(); }
     },
     extrude() {
       const o = this.active, T = this.T;
-      if (!o || S.selMode === "object" || S.selMode === "v") return updateStatus("Extrude works on selected faces or edges");
+      if (!o || S.selMode === "object" || S.selMode === "v") return updateStatus("Extrude works on faces or edges");
       const faces = S.selMode === "f";
-      if (!(faces ? o.sel.f.size : o.sel.e.size)) return updateStatus("Select " + (faces ? "faces" : "edges") + " first");
+      if (!(faces ? o.sel.f.size : o.sel.e.size)) return updateStatus("Select items first");
       const before = o.snap(), next = o.poly.clone();
       let res, dirW = null;
       const keepF = new Set(o.sel.f);
@@ -1723,7 +1621,7 @@
     },
     makeFace() {
       const o = this.active;
-      if (!o || S.selMode !== "v" || o.sel.v.size < 3) return updateStatus("Vertex mode: select 3 or more vertices (in order), then F");
+      if (!o || S.selMode !== "v" || o.sel.v.size < 3) return updateStatus("Select 3+ vertices");
       const ids = [...o.sel.v], T = this.T;
       const c = new T.Vector3();
       ids.forEach((id) => c.add(this.worldOf(o, id)));
@@ -1737,7 +1635,7 @@
     },
     subdivide() {
       const o = this.active;
-      if (!o || S.selMode !== "f" || !o.sel.f.size) return updateStatus("Face mode: select faces to subdivide");
+      if (!o || S.selMode !== "f" || !o.sel.f.size) return updateStatus("Select faces");
       const f = new Set(o.sel.f);
       this.editPoly("Subdivide", (p) => { const out = p.subdivide(f); return { select: (ob) => out.forEach((i) => ob.sel.f.add(i)) }; });
     },
@@ -1753,14 +1651,13 @@
       const before = o.snap();
       o.poly = o.poly.clone();
       o.rebuild();
-      this.commit(o, "Recalculate normals (" + S.shading + ")", before, "g");
+      this.commit(o, "Recalculate normals", before, "g");
     },
     setShading(mode, angle) {
       S.shading = mode; if (angle) S.angle = angle;
       this.objs.forEach((o) => { o.rebuild(); if (o.src) o.dirty.g = o.dirty.g || o.poly !== (o.orig && o.orig.poly); });
       this.scheduleSync();
     },
-    // numeric median editing of selected elements
     median() {
       const o = this.active;
       if (!o) return null;
@@ -1777,7 +1674,6 @@
       this.editPoly("Move selection", (p) => { ids.forEach((id) => { p.v[3 * id + axis] += d; }); return { select: (ob) => { sel.v.forEach((x) => ob.sel.v.add(x)); sel.e.forEach((x) => ob.sel.e.add(x)); sel.f.forEach((x) => ob.sel.f.add(x)); } }; });
     },
 
-    // ---------- Roblox-style gizmo ----------
     buildGizmo(kind) {
       const T = this.T;
       if (this.gizmo) { this.scene.remove(this.gizmo); this.gizmo.traverse((c) => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); }
@@ -1838,7 +1734,6 @@
       return h ? h.object.userData.axis : null;
     },
 
-    // ---------- aircraft ----------
     spawnAircraft(record) {
       const T = this.T, before = record ? this.snapAll() : null;
       const mk = (type, label, x, y, z, fn) => {
@@ -1855,7 +1750,7 @@
       if (record) { const after = this.snapAll(); History.record("Spawn aircraft", () => this.restoreAll(before), () => this.restoreAll(after)); }
     },
     aircraftMode(on) {
-      if (!this.ready) return updateStatus("Open the editor first (it is still starting)");
+      if (!this.ready) return;
       const before = this.snapAll();
       S.aircraft = on;
       this.objs.filter((x) => x.src).forEach((x) => { x.visible = !on; x.dirty.t = true; x.applyMat(); x.rebuildOverlay(); });
@@ -1866,10 +1761,8 @@
       const after = this.snapAll();
       History.record(on ? "Aircraft mode" : "Car mode", () => this.restoreAll(before), () => this.restoreAll(after));
       Sync.run();
-      updateStatus(on ? "Aircraft: I/K = climb/dive, U/O = throttle up/down (not used by the game)" : "Back to car mode");
     },
 
-    // ---------- preview / Blender-style tools ----------
     setPreview(m) {
       S.preview = m;
       const L = this.lights;
@@ -1887,7 +1780,7 @@
     selectLinked() {
       const o = this.active; if (!o || S.selMode === "object") return;
       const p = o.poly, start = o.affected();
-      if (!start.size) return updateStatus("Select something first, then press L");
+      if (!start.size) return;
       const nb = Array.from({ length: p.nv }, () => []);
       for (let i = 0; i < p.nt; i++) { const a = p.t[3 * i], b = p.t[3 * i + 1], c = p.t[3 * i + 2]; nb[a].push(b, c); nb[b].push(a, c); nb[c].push(a, b); }
       const seen = new Set(start), q = [...start];
@@ -1908,21 +1801,18 @@
     },
     mergeSel(kind) {
       const o = this.active;
-      if (!o || S.selMode === "object") return updateStatus("Merge works in Vertex / Edge / Face mode");
+      if (!o || S.selMode === "object") return;
       const ids = o.affected();
-      if (kind === "center" && ids.size < 2) return updateStatus("Select 2 or more vertices to merge");
       let n = 0;
-      const r = this.editPoly("Merge vertices", (p) => { n = kind === "dist" ? p.merge(ids.size ? ids : null, 0.002) : p.merge(ids, 0); if (!n) return false; });
-      updateStatus(r ? "Merged " + n + " vertices" : "Nothing to merge");
+      this.editPoly("Merge vertices", (p) => { n = kind === "dist" ? p.merge(ids.size ? ids : null, 0.002) : p.merge(ids, 0); if (!n) return false; });
     },
     separate() {
       const o = this.active;
-      if (!o || S.selMode === "object") return updateStatus("Separate: go to Edit mode and select faces first");
+      if (!o || S.selMode === "object") return;
       const p = o.poly; let tris;
       if (S.selMode === "f") tris = new Set(o.sel.f);
       else { const ids = o.affected(); tris = new Set(); for (let i = 0; i < p.nt; i++) if (ids.has(p.t[3 * i]) && ids.has(p.t[3 * i + 1]) && ids.has(p.t[3 * i + 2])) tris.add(i); }
-      if (!tris.size) return updateStatus("Nothing selected to separate");
-      if (tris.size >= p.nt) return updateStatus("Can't separate the whole mesh");
+      if (!tris.size) return;
       const T = this.T, before = this.snapAll();
       const np = p.extractTris(tris), rest = p.clone(); rest.deleteTris(tris);
       o.poly = rest; o.clearSel(); o.dirty.g = true; if (rest.col.some(Boolean)) o.dirty.m = true; o.rebuild();
@@ -1949,7 +1839,7 @@
     },
     insetFaces() {
       const o = this.active;
-      if (!o || S.selMode !== "f" || !o.sel.f.size) return updateStatus("Inset: select faces in Face mode");
+      if (!o || S.selMode !== "f" || !o.sel.f.size) return;
       const before = o.snap(), next = o.poly.clone(), keepF = new Set(o.sel.f);
       const res = next.extrudeFaces(o.sel.f);
       o.poly = next; o.clearSel(); keepF.forEach((i) => o.sel.f.add(i)); o.dirty.g = true; o.rebuild();
@@ -1962,7 +1852,7 @@
       else if (this.active) this.active.visible = false;
       this.objs.forEach((x) => { x.dirty.t = true; x.applyMat(); x.rebuildOverlay(); });
       const after = this.snapAll();
-      History.record(mode === "reveal" ? "Reveal all" : "Hide", () => this.restoreAll(before), () => this.restoreAll(after));
+      History.record("Hide", () => this.restoreAll(before), () => this.restoreAll(after));
     },
     clearXf(w) {
       const o = this.active;
@@ -1970,10 +1860,10 @@
       const b = o.snap();
       if (w === "p") o.mesh.position.set(0, 0, 0); else if (w === "r") o.mesh.quaternion.set(0, 0, 0, 1); else o.mesh.scale.set(1, 1, 1);
       o.mesh.updateMatrixWorld(true); o.rebuildOverlay();
-      this.commit(o, "Clear " + ({ p: "location", r: "rotation", s: "scale" })[w], b, "t");
+      this.commit(o, "Clear transform", b, "t");
     },
-    copyObj() { if (this.active) { this.clip = this.active; updateStatus("Copied " + this.active.name); } },
-    pasteObj() { if (this.clip && this.objs.includes(this.clip)) this.duplicate(this.clip); else updateStatus("Nothing copied"); },
+    copyObj() { if (this.active) this.clip = this.active; },
+    pasteObj() { if (this.clip && this.objs.includes(this.clip)) this.duplicate(this.clip); },
     duplicateMove() {
       const n = this.objs.length;
       this.duplicate();
@@ -1981,7 +1871,6 @@
     },
     orbitStep(dt, dp) { this.sph.theta += dt; this.sph.phi = clamp(this.sph.phi + dp, 0.001, Math.PI - 0.001); this.updateCamera(); },
     zoomBy(f) { this.sph.radius = clamp(this.sph.radius * f, 0.3, 120); this.updateCamera(); },
-    // where a new part spawns: on top of the car (wheels go beside it)
     placement(o, type) {
       const T = this.T, cars = this.objs.filter((x) => !x.deleted && x.visible && (x.src || x.base[0] === "Built-in rig"));
       const b = this.worldBox(cars, false), v = o.poly.v;
@@ -1994,7 +1883,6 @@
       return { x: c.x, y: b.max.y - y0 + 0.03, z: c.z + nudge };
     },
 
-    // ---------- objects & parts ----------
     addPart(type, label) {
       const T = this.T, before = this.snapAll();
       const o = new Obj(T, this.uniqueName(label), makePoly(T, type), "custom");
@@ -2018,20 +1906,20 @@
       const c = new Obj(T, this.uniqueName(o.name.replace(/_\d+$/, "") + "_copy"), o.poly.clone(), "custom");
       c.poly.srcMap = null;
       c.base = ["Custom parts"];
-      c.color = o.color; c.metal = o.metal; c.rough = o.rough; c.opacity = o.opacity; c.emissive = o.emissive; c.emInt = o.emInt; c.visible = true; c.neon = o.neon; c.neonInt = o.neonInt;
+      copyLook(o, c);
       c.mesh.position.copy(o.mesh.position).x += 0.15;
       c.mesh.quaternion.copy(o.mesh.quaternion); c.mesh.scale.copy(o.mesh.scale);
       this.addObj(c);
       this.active = c;
       const after = this.snapAll();
-      History.record("Duplicate " + o.name, () => this.restoreAll(before), () => this.restoreAll(after));
+      History.record("Duplicate", () => this.restoreAll(before), () => this.restoreAll(after));
     },
     revert(o) {
       o = o || this.active;
-      if (!o || !o.orig) return updateStatus("Only parts of the original car can be reverted");
+      if (!o || !o.orig) return;
       const before = o.snap();
       o.restore(o.orig);
-      this.commit(o, "Revert " + o.name, before, "tmg");
+      this.commit(o, "Revert", before, "tmg");
     },
     revertAll() {
       const before = this.snapAll();
@@ -2041,9 +1929,7 @@
       History.record("Revert all", () => this.restoreAll(before), () => this.restoreAll(after));
     },
 
-    // ---------- painting ----------
     paintDown(e) {
-      const T = this.T;
       let o = this.active;
       if (S.selMode === "object" || !o) {
         const h = this.rayAll(e);
@@ -2055,7 +1941,7 @@
           o.poly = o.poly.clone(); o.poly.col.fill(null);
           o.color = S.paintColor;
           o.refreshColors(); o.rebuild();
-          this.commit(o, "Paint " + o.name, before, "mg");
+          this.commit(o, "Paint", before, "mg");
           return;
         }
         this.setActive(o);
@@ -2084,18 +1970,17 @@
       if (S.selMode === "object") {
         const before = o.snap();
         if (clear) { o.poly = o.poly.clone(); o.poly.col.fill(null); } else { o.poly = o.poly.clone(); o.poly.col.fill(null); o.color = S.paintColor; }
-        o.rebuild(); return this.commit(o, clear ? "Clear face paint" : "Paint object", before, "mg");
+        o.rebuild(); return this.commit(o, clear ? "Clear paint" : "Paint object", before, "mg");
       }
       const ids = new Set(S.selMode === "f" ? o.sel.f : o.poly.trisWithVerts(o.affected()));
-      if (!ids.size) return updateStatus("Select something to paint first");
+      if (!ids.size) return;
       const sel = { v: new Set(o.sel.v), e: new Set(o.sel.e), f: new Set(o.sel.f) }, c = clear ? null : S.paintColor;
-      this.editPoly(clear ? "Clear face paint" : "Paint faces", (p) => {
+      this.editPoly("Paint faces", (p) => {
         ids.forEach((i) => { p.col[i] = c; });
         return { select: (ob) => { sel.v.forEach((x) => ob.sel.v.add(x)); sel.e.forEach((x) => ob.sel.e.add(x)); sel.f.forEach((x) => ob.sel.f.add(x)); } };
       });
     },
 
-    // ---------- neon preview ----------
     updateNeonViz() {
       const T = this.T;
       if (!T) return;
@@ -2108,11 +1993,10 @@
       g.rotateX(Math.PI / 2);
       const a = new T.Mesh(g, mat); a.position.set(-0.75, 0.08, 0);
       const b = new T.Mesh(g.clone(), mat); b.position.set(0.75, 0.08, 0);
-      const l = new T.PointLight(S.neonColor, 2.5, 4.0); l.position.set(0, 0.05, 0);
+      const l = new T.PointLight(S.neonColor, 3.5, 6.0); l.position.set(0, 0.05, 0);
       this.neonViz.add(a, b, l);
     },
 
-    // ---------- input ----------
     bindControls() {
       const cv = this.canvas;
       cv.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -2216,15 +2100,6 @@
       else if (ctrl && k === "KeyI") { prevent(); this.selectInvert(); }
       else if (ctrl && k === "KeyL") { prevent(); this.selectLinked(); }
       else if (ctrl && k === "KeyA") { prevent(); this.selectAll(); }
-      else if (ctrl && (k === "NumpadAdd" || k === "Equal")) { prevent(); this.growSel(1); }
-      else if (ctrl && (k === "NumpadSubtract" || k === "Minus")) { prevent(); this.growSel(-1); }
-      else if (ctrl && k.startsWith("Numpad")) { prevent(); this.numpadView(k, true); }
-      else if (alt && k === "KeyH") { prevent(); this.hideObj("reveal"); }
-      else if (alt && k === "KeyG") { prevent(); this.clearXf("p"); }
-      else if (alt && k === "KeyR") { prevent(); this.clearXf("r"); }
-      else if (alt && k === "KeyS") { prevent(); this.clearXf("s"); }
-      else if (alt && k === "KeyZ") { prevent(); S.xray = !S.xray; this.objs.forEach((x) => x.rebuildOverlay()); UI.refresh(); }
-      else if (alt && k === "KeyA") { prevent(); this.selectNone(); }
       else if (k === "Escape") { if (S.tool !== "select") { S.tool = "select"; UI.refresh(); } else UI.exitStudio(); }
       else if (k === "F1" || e.key === "?") { prevent(); UI.toggleHelp(); }
       else if (k === "Tab") { prevent(); this.setMode(S.selMode === "object" ? this.lastEdit : "object"); }
@@ -2240,7 +2115,7 @@
       else if (k === "KeyF") { prevent(); this.makeFace(); }
       else if (k === "KeyM") {
         prevent();
-        if (edit) UI.showMenu([{ head: "Merge" }, { label: "At center", icon: "merge", fn: () => this.mergeSel("center") }, { label: "By distance", icon: "merge", fn: () => this.mergeSel("dist") }], this.mouse.x, this.mouse.y);
+        if (edit) UI.showMenu([{ head: "Merge" }, { label: "At center", fn: () => this.mergeSel("center") }, { label: "By distance", fn: () => this.mergeSel("dist") }], this.mouse.x, this.mouse.y);
       }
       else if (k === "KeyP") { prevent(); this.separate(); }
       else if (k === "KeyL") { prevent(); this.selectLinked(); }
@@ -2249,33 +2124,17 @@
       else if (k === "KeyA" && sh) { prevent(); UI.addMenu(this.mouse.x, this.mouse.y); }
       else if (k === "KeyA") { prevent(); this.selectAll(); }
       else if (k === "KeyD" && sh) { prevent(); this.duplicateMove(); }
-      else if (k === "KeyC" && sh) { prevent(); this.setView("persp"); this.frameAll(); }
       else if (k === "KeyZ") { prevent(); S.wire = !S.wire; this.objs.forEach((x) => x.rebuildOverlay()); UI.refresh(); }
       else if (k === "KeyW") { prevent(); const order = ["select", "move", "rotate", "scale"]; S.tool = order[(Math.max(0, order.indexOf(S.tool)) + 1) % order.length]; UI.refresh(); }
-      else if (k === "KeyN") { prevent(); UI.togglePanel("side"); }
+      else if (k === "KeyJ") { prevent(); UI.togglePanel("side"); }
       else if (k === "KeyT") { prevent(); UI.togglePanel("shelf"); }
-      else if (k === "KeyB") { prevent(); S.tool = "select"; UI.refresh(); }
       else if (k === "Period" || k === "NumpadDecimal") { prevent(); this.frameSel(); }
       else if (k === "Home") { prevent(); this.frameAll(); }
-      else if (k === "Numpad4") { prevent(); this.orbitStep(-0.26, 0); }
-      else if (k === "Numpad6") { prevent(); this.orbitStep(0.26, 0); }
-      else if (k === "Numpad8") { prevent(); this.orbitStep(0, -0.26); }
-      else if (k === "Numpad2") { prevent(); this.orbitStep(0, 0.26); }
-      else if (k === "NumpadAdd") { prevent(); this.zoomBy(0.85); }
-      else if (k === "NumpadSubtract") { prevent(); this.zoomBy(1.18); }
-      else if (k.startsWith("Numpad")) { prevent(); this.numpadView(k, false); }
-    },
-    numpadView(k, opp) {
-      const map = { Numpad1: ["front", "back"], Numpad3: ["right", "left"], Numpad7: ["top", "under"], Numpad5: ["persp", "persp"], Numpad0: ["persp", "persp"], Numpad9: ["back", "front"] };
-      if (map[k]) this.setView(map[k][opp ? 1 : 0]);
     }
   };
   Studio.ctrlKeyHandler = (e) => Studio.onKey(e);
   Studio.blockKeys = (e) => { if (Studio.open) e.stopImmediatePropagation(); };
 
-  // =========================================================================
-  // 9. PROJECT: export / import / persist
-  // =========================================================================
   const Project = {
     serialize() {
       const objs = Studio.objs.filter((o) => o.isEdited() || (o.src && o.deleted)).map((o) => {
@@ -2290,10 +2149,9 @@
       return { format: "fastroads-cad", version: 2, vehicle: Engine.currentType, objects: objs };
     },
     apply(data) {
-      if (!data || data.format !== "fastroads-cad" || !Array.isArray(data.objects)) throw new Error("Not a Fast Roads project file");
+      if (!data || data.format !== "fastroads-cad" || !Array.isArray(data.objects)) throw new Error("Invalid project");
       const T = Studio.T, before = Studio.snapAll();
       const byKey = new Map(Studio.objs.filter((o) => o.src).map((o) => [o.key, o]));
-      // PATCH 5: drop existing custom parts first so re-loading doesn't duplicate them (undo restores them)
       Studio.objs.filter((o) => !o.src).forEach((o) => Studio.root.remove(o.mesh));
       Studio.objs = Studio.objs.filter((o) => o.src);
       if (!Studio.objs.includes(Studio.active)) Studio.active = null;
@@ -2334,7 +2192,7 @@
     exportJSON() {
       const data = this.serialize();
       this.download("fastroads-" + String(Engine.currentType).toLowerCase() + ".json", JSON.stringify(data));
-      updateStatus("Exported " + data.objects.length + " edited objects");
+      updateStatus("Exported JSON");
     },
     exportOBJ(only) {
       const T = Studio.T, t = new T.Vector3();
@@ -2353,36 +2211,30 @@
         }
         vo += p.nv; uo += p.nt * 3;
       }
-      this.download("fastroads-" + (only ? only.name.replace(/\s+/g, "_") : "model") + ".obj", out, "text/plain");
+      this.download("fastroads.obj", out, "text/plain");
       updateStatus("Exported OBJ");
     },
     importFile(file) {
       const rd = new FileReader();
       rd.onload = () => {
-        try { const r = this.apply(JSON.parse(rd.result)); updateStatus("Imported " + r.applied + " objects" + (r.skipped ? " (" + r.skipped + " unmatched skipped)" : "")); }
-        catch (err) { updateStatus("Import failed: " + err.message); }
+        try { this.apply(JSON.parse(rd.result)); updateStatus("Imported project"); }
+        catch (err) { updateStatus("Import failed"); }
       };
       rd.readAsText(file);
     },
     saveLocal() {
-      try {
-        localStorage.setItem(KEY + "_project", JSON.stringify(this.serialize()));
-        updateStatus("Saved to this browser");
-      } catch (err) { updateStatus("Save failed (storage full?). Use Export JSON instead."); }
+      try { localStorage.setItem(KEY + "_project", JSON.stringify(this.serialize())); updateStatus("Saved"); }
+      catch (err) { updateStatus("Save failed"); }
     },
     loadSaved(silent) {
       try {
         const raw = localStorage.getItem(KEY + "_project");
-        if (!raw) { if (!silent) updateStatus("No saved project in this browser"); return; }
-        const r = this.apply(JSON.parse(raw));
-        updateStatus("Loaded saved project: " + r.applied + " objects");
-      } catch (err) { if (!silent) updateStatus("Load failed: " + err.message); }
+        if (!raw) return;
+        this.apply(JSON.parse(raw));
+      } catch (err) { /* ignore */ }
     }
   };
 
-  // =========================================================================
-  // 10. UI — shared helpers
-  // =========================================================================
   const el = (tag, props, kids) => {
     const n = document.createElement(tag);
     if (props) Object.assign(n, props);
@@ -2429,12 +2281,9 @@
     aircraft: [["ac_fuselage", "Fuselage"], ["ac_wing", "Wing"], ["ac_tailplane", "Tailplane"], ["tailfin", "Tail Fin"], ["ac_canopy", "Canopy"], ["ac_gear", "Landing Gear"], ["propeller", "Propeller"]]
   };
   const HELP = [
-    ["Navigate", [["MMB / RMB drag", "Orbit"], ["Shift + MMB/RMB", "Pan"], ["Wheel", "Zoom"], ["Numpad 1 / 3 / 7", "Front / Side / Top (Ctrl = opposite)"], ["Numpad 4 6 8 2", "Orbit in steps"], ["Numpad + / -", "Zoom"], ["Period / Numpad .", "Frame selection"], ["Home / Shift C", "Frame all"]]],
-    ["Modes", [["Tab", "Object / Edit mode"], ["1 / 2 / 3", "Vertex / Edge / Face"], ["W", "Cycle tool"], ["B", "Select tool"], ["Z", "Wireframe"], ["Alt Z", "X-ray"], ["N / T", "Toggle sidebar / toolbar"]]],
-    ["Select", [["Click / Shift+Click", "Select / add"], ["Drag (edit mode)", "Box select"], ["A / Alt A", "All / none"], ["Ctrl I", "Invert"], ["L / Ctrl L", "Select linked"], ["Ctrl + / -", "Grow / shrink"], ["H / Shift H / Alt H", "Hide / others / reveal"]]],
-    ["Transform", [["G / R / S", "Move / rotate / scale"], ["X / Y / Z", "Lock axis"], ["Type digits", "Exact value"], ["Enter / LMB", "Confirm"], ["Esc / RMB", "Cancel"], ["Ctrl (held)", "Snap"], ["Alt G / R / S", "Clear loc / rot / scale"]]],
-    ["Mesh", [["E", "Extrude"], ["I", "Inset faces"], ["F", "Make face"], ["M", "Merge menu"], ["P", "Separate selection"], ["X / Del", "Delete"]]],
-    ["Objects & app", [["Shift A", "Add menu"], ["Shift D", "Duplicate and move"], ["Ctrl C / V", "Copy / paste"], ["Ctrl M", "Mirror X copy"], ["Right click", "Context menu"], ["Ctrl Z / Ctrl Shift Z", "Undo / redo"], ["Ctrl S", "Save in browser"], ["Esc", "Exit studio"], ["F1 or ?", "This help"]]]
+    ["Navigate", [["MMB / RMB drag", "Orbit"], ["Shift + MMB/RMB", "Pan"], ["Wheel", "Zoom"]]],
+    ["Modes", [["Tab", "Object / Edit mode"], ["1 / 2 / 3", "Vertex / Edge / Face"], ["W", "Cycle tool"]]],
+    ["Transform", [["G / R / S", "Move / rotate / scale"], ["X / Y / Z", "Lock axis"], ["Enter", "Confirm"]]]
   ];
   const btn = (label, fn, cls, title) => {
     const b = el("button", { className: "cb " + (cls || ""), onclick: fn, title: title || "" });
@@ -2450,133 +2299,78 @@
 
   const css = `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    /* ---------- floating liquid-glass mod menu ---------- */
-    .p { position: relative; width: 420px; color: #000; font: 13px -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+    .p { position: relative; width: 420px; color: #000; font: 13px -apple-system, sans-serif;
       border-radius: 34px; background: linear-gradient(135deg, rgba(255,255,255,.24), rgba(255,255,255,.08));
-      -webkit-backdrop-filter: blur(14px) saturate(190%) brightness(1.08); backdrop-filter: blur(14px) saturate(190%) brightness(1.08);
-      backdrop-filter: url(#lgfilter) blur(6px) saturate(190%) brightness(1.08);
-      box-shadow: 0 18px 50px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.2), inset 0 0 0 1px rgba(255,255,255,.18), inset 0 1px 1px rgba(255,255,255,.6);
-      transition: transform .6s ${spring}; user-select: none; overflow: hidden; }
-    .p::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none; z-index: 3;
-      background: linear-gradient(140deg, rgba(255,255,255,.95), rgba(255,255,255,.08) 28%, rgba(255,255,255,.04) 62%, rgba(255,255,255,.7));
-      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
-    .p::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
-      background: radial-gradient(230px circle at var(--mx,30%) var(--my,0%), rgba(255,255,255,.26), rgba(255,255,255,0) 62%); }
-    .h, .b { position: relative; z-index: 1; }
-    .h { padding: 15px 18px 9px; display: flex; justify-content: space-between; align-items: center; cursor: grab; touch-action: none; font-weight: 700; font-size: 14.5px; }
-    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #34c759; margin-left: 8px; box-shadow: 0 0 8px #34c759; }
-    .dot.bad { background: #ff453a; box-shadow: 0 0 8px #ff453a; }
+      -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+      box-shadow: 0 18px 50px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.18); overflow: hidden; }
+    .h { padding: 15px 18px 9px; display: flex; justify-content: space-between; align-items: center; cursor: grab; font-weight: 700; font-size: 14.5px; }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #34c759; margin-left: 8px; }
+    .dot.bad { background: #ff453a; }
     .win-btns { display: flex; gap: 6px; }
-    .min { width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255,255,255,.4); background: linear-gradient(160deg, rgba(255,255,255,.35), rgba(255,255,255,.1));
-      box-shadow: inset 0 1px 1px rgba(255,255,255,.6); color: #000; font-size: 15px; line-height: 24px; text-align: center; cursor: pointer; padding: 0; transition: transform .3s ${spring}; }
-    .min:hover { transform: scale(1.1); } .min:active { transform: scale(.9); }
+    .min { width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255,255,255,.4); background: rgba(255,255,255,.3); cursor: pointer; }
     .b { padding: 2px 14px 16px; display: flex; flex-direction: column; gap: 10px; }
     .b.hide { display: none !important; }
-    .tabs { position: relative; display: flex; padding: 3px; border-radius: 18px; background: rgba(0,0,0,.22); box-shadow: inset 0 1px 3px rgba(0,0,0,.25), 0 1px 0 rgba(255,255,255,.2); }
-    .tab { flex: 1; text-align: center; padding: 8px 0; font-weight: 600; font-size: 12px; cursor: pointer; position: relative; z-index: 1; opacity: .7; }
+    .tabs { display: flex; padding: 3px; border-radius: 18px; background: rgba(0,0,0,.22); }
+    .tab { flex: 1; text-align: center; padding: 8px 0; font-weight: 600; font-size: 12px; cursor: pointer; opacity: .7; }
     .tab.on { opacity: 1; }
-    .ind { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 4); border-radius: 15px;
-      background: linear-gradient(160deg, rgba(255,255,255,.42), rgba(255,255,255,.14)); box-shadow: inset 0 1px 1px rgba(255,255,255,.7), 0 2px 8px rgba(0,0,0,.2); transition: transform .55s ${spring}; }
-    .tabs.t1 .ind { transform: translateX(100%); } .tabs.t2 .ind { transform: translateX(200%); } .tabs.t3 .ind { transform: translateX(300%); }
-    .pg { display: flex; flex-direction: column; gap: 10px; animation: pgin .45s ${spring}; }
+    .pg { display: flex; flex-direction: column; gap: 10px; }
     .pg.hide { display: none; }
-    @keyframes pgin { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
-    .card { background: linear-gradient(160deg, rgba(255,255,255,.2), rgba(255,255,255,.06)); border-radius: 24px; padding: 11px 13px;
-      box-shadow: inset 0 1px 1px rgba(255,255,255,.5), inset 0 0 0 1px rgba(255,255,255,.12), 0 4px 14px rgba(0,0,0,.12); display: flex; flex-direction: column; gap: 8px; }
+    .card { background: rgba(255,255,255,.15); border-radius: 24px; padding: 11px 13px; display: flex; flex-direction: column; gap: 8px; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-    .lbl { font-weight: 600; font-size: 12.5px; } .lbl small { display: block; opacity: .75; font-size: 10.5px; font-weight: 400; margin-top: 1px; }
-    .step { display: flex; align-items: center; gap: 2px; background: rgba(0,0,0,.22); border-radius: 16px; padding: 3px; box-shadow: inset 0 1px 3px rgba(0,0,0,.25), 0 1px 0 rgba(255,255,255,.2); }
-    .step button { width: 28px; height: 28px; border: 0; border-radius: 13px; background: linear-gradient(160deg, rgba(255,255,255,.34), rgba(255,255,255,.12)); box-shadow: inset 0 1px 1px rgba(255,255,255,.6); color: #000; font-size: 17px; line-height: 26px; cursor: pointer; padding: 0; }
-    .step input { width: 50px; text-align: center; background: transparent; border: 0; color: #000; font: 700 13px -apple-system, system-ui, sans-serif; outline: none; padding: 0; }
-    .sw { width: 50px; height: 30px; border-radius: 15px; background: rgba(255,255,255,.2); box-shadow: inset 0 1px 3px rgba(0,0,0,.28), 0 1px 0 rgba(255,255,255,.25); position: relative; cursor: pointer; transition: background .3s; flex: none; }
-    .sw i { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 12px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); transition: transform .45s ${spring}; }
+    .lbl { font-weight: 600; font-size: 12.5px; } .lbl small { display: block; opacity: .75; font-size: 10.5px; }
+    .step { display: flex; align-items: center; gap: 2px; background: rgba(0,0,0,.22); border-radius: 16px; padding: 3px; }
+    .step button { width: 28px; height: 28px; border: 0; border-radius: 13px; background: rgba(255,255,255,.3); cursor: pointer; }
+    .step input { width: 50px; text-align: center; background: transparent; border: 0; font: 700 13px sans-serif; outline: none; }
+    .sw { width: 50px; height: 30px; border-radius: 15px; background: rgba(255,255,255,.2); position: relative; cursor: pointer; }
+    .sw i { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 12px; background: #fff; transition: transform .3s; }
     .sw.on { background: rgba(52,199,89,.9); } .sw.on i { transform: translateX(20px); }
-    .rbtn { border: 0; border-radius: 14px; padding: 6px 14px; background: linear-gradient(160deg, rgba(255,255,255,.38), rgba(255,255,255,.14)); box-shadow: inset 0 1px 1px rgba(255,255,255,.6), 0 2px 6px rgba(0,0,0,.15); color: #000; font: 600 12px -apple-system, system-ui, sans-serif; cursor: pointer; transition: transform .2s ${spring}; }
-    .rbtn:hover { transform: scale(1.04); }
-    .rbtn.launch { width: 100%; padding: 12px; font-size: 13.5px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #0ea5e9, #0284c7); box-shadow: 0 4px 16px rgba(2,132,199,.4); }
-    select.glass-select { background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.3); border-radius: 14px; padding: 5px 12px; color: #000; font-weight: 600; font-size: 12px; outline: none; cursor: pointer; }
-    .status { font: 11px ${MONO}; opacity: .85; min-height: 13px; padding: 0 6px; }
+    .rbtn { border: 0; border-radius: 14px; padding: 6px 14px; background: rgba(255,255,255,.35); font: 600 12px sans-serif; cursor: pointer; }
+    .rbtn.launch { width: 100%; padding: 12px; font-size: 13.5px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #0ea5e9, #0284c7); }
+    select.glass-select { background: rgba(0,0,0,.2); border: 1px solid rgba(255,255,255,.3); border-radius: 14px; padding: 5px 12px; font-weight: 600; outline: none; }
+    .status { font: 11px ${MONO}; opacity: .85; }
     .diag { display: flex; gap: 6px; flex-wrap: wrap; }
-    .chip { font: 600 11px -apple-system, system-ui, sans-serif; padding: 3px 9px; border-radius: 10px; background: rgba(0,0,0,.18); }
+    .chip { font: 600 11px sans-serif; padding: 3px 9px; border-radius: 10px; background: rgba(0,0,0,.18); }
     .chip.ok { background: rgba(52,199,89,.55); } .chip.no { background: rgba(255,69,58,.5); }
 
-    /* ---------- fullscreen CAD studio ---------- */
-    .cad { position: fixed; inset: 0; background: #0b1220; color: #e2e8f0; font: 12px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; display: flex; flex-direction: column; user-select: none; }
-    .cad-top { height: 46px; flex: none; background: #111a2e; border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; gap: 12px; }
+    .cad { position: fixed; inset: 0; background: #0b1220; color: #e2e8f0; font: 12px sans-serif; display: flex; flex-direction: column; user-select: none; }
+    .cad-top { height: 46px; background: #111a2e; border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; gap: 12px; }
     .grp { display: flex; align-items: center; gap: 6px; }
-    .brand { font-weight: 800; color: #00f0ff; letter-spacing: .4px; margin-right: 6px; }
-    .seg { display: flex; background: #0b1220; border-radius: 9px; padding: 2px; border: 1px solid rgba(255,255,255,.08); }
-    .seg button { background: transparent; border: 0; color: #94a3b8; font: 600 12px system-ui, sans-serif; padding: 5px 11px; border-radius: 7px; cursor: pointer; }
-    .seg button:hover { color: #fff; } .seg button.on { background: #00f0ff; color: #001018; }
-    .cb { background: #25324b; border: 1px solid rgba(255,255,255,.12); color: #e2e8f0; font: 600 11.5px system-ui, sans-serif; padding: 5px 10px; border-radius: 8px; cursor: pointer; }
-    .cb:hover { background: #33446a; } .cb:disabled { opacity: .4; cursor: default; }
-    .cb.pri { background: #00c8e0; color: #001018; border-color: #00f0ff; } .cb.dan { background: #b91c1c; border-color: #ef4444; }
-    .cb.on { background: #00f0ff; color: #001018; } .cb.sm { padding: 3px 7px; font-size: 11px; }
+    .brand { font-weight: 800; color: #00f0ff; }
+    .seg { display: flex; background: #0b1220; border-radius: 9px; padding: 2px; }
+    .seg button { background: transparent; border: 0; color: #94a3b8; font: 600 12px sans-serif; padding: 5px 11px; border-radius: 7px; cursor: pointer; }
+    .seg button.on { background: #00f0ff; color: #001018; }
+    .cb { background: #25324b; border: 1px solid rgba(255,255,255,.12); color: #e2e8f0; font: 600 11.5px sans-serif; padding: 5px 10px; border-radius: 8px; cursor: pointer; }
+    .cb.pri { background: #00c8e0; color: #001018; } .cb.dan { background: #b91c1c; }
     .cad-main { flex: 1; display: flex; min-height: 0; }
-    .view { flex: 1; position: relative; min-width: 0; background: radial-gradient(circle at 50% 40%, #1c2a45 0%, #070b14 100%); overflow: hidden; }
-    .shelf { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 4px; z-index: 5; background: rgba(15,23,42,.8); padding: 5px; border-radius: 12px; border: 1px solid rgba(255,255,255,.12); backdrop-filter: blur(6px); }
-    .shelf .cb { text-align: left; min-width: 96px; background: transparent; border-color: transparent; color: #94a3b8; }
-    .shelf .cb:hover { background: rgba(255,255,255,.1); color: #fff; } .shelf .cb.on { background: #00f0ff; color: #001018; }
-    .shelf hr { border: 0; border-top: 1px solid rgba(255,255,255,.1); margin: 3px 0; }
-    .vbar { position: absolute; left: 12px; right: 12px; bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 10px; z-index: 5; pointer-events: none; }
+    .view { flex: 1; position: relative; background: #070b14; overflow: hidden; }
+    .shelf { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 4px; z-index: 5; background: rgba(15,23,42,.8); padding: 5px; border-radius: 12px; }
+    .shelf .cb { background: transparent; border-color: transparent; color: #94a3b8; text-align: left; }
+    .shelf .cb.on { background: #00f0ff; color: #001018; }
+    .vbar { position: absolute; left: 12px; right: 12px; bottom: 10px; display: flex; justify-content: space-between; align-items: center; z-index: 5; pointer-events: none; }
     .vbar > * { pointer-events: auto; }
-    .hint { background: rgba(15,23,42,.82); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 6px 12px; font: 11.5px ${MONO}; max-width: 70%; }
-    .vinfo { position: absolute; right: 12px; top: 12px; z-index: 5; background: rgba(15,23,42,.8); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 6px 10px; font: 11px ${MONO}; text-align: right; }
-    .boxsel { position: absolute; border: 1px dashed #00f0ff; background: rgba(0,240,255,.09); pointer-events: none; display: none; z-index: 4; }
-    .side { width: 320px; flex: none; background: #111a2e; border-left: 1px solid rgba(255,255,255,.08); display: flex; flex-direction: column; min-height: 0; }
-    .out { flex: none; height: 34%; min-height: 160px; display: flex; flex-direction: column; border-bottom: 1px solid rgba(255,255,255,.08); padding: 8px; gap: 6px; }
-    .out input.search, .side input[type=text] { background: #0b1220; border: 1px solid rgba(255,255,255,.12); color: #e2e8f0; border-radius: 8px; padding: 5px 8px; font: 12px system-ui, sans-serif; outline: none; width: 100%; user-select: text; }
+    .hint { background: rgba(15,23,42,.82); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 6px 12px; font: 11.5px ${MONO}; }
+    .vinfo { position: absolute; right: 12px; top: 12px; z-index: 5; background: rgba(15,23,42,.8); border-radius: 10px; padding: 6px 10px; font: 11px ${MONO}; text-align: right; }
+    .side { width: 320px; background: #111a2e; border-left: 1px solid rgba(255,255,255,.08); display: flex; flex-direction: column; }
+    .out { height: 34%; padding: 8px; display: flex; flex-direction: column; border-bottom: 1px solid rgba(255,255,255,.08); gap: 6px; }
+    .out input.search { background: #0b1220; border: 1px solid rgba(255,255,255,.12); color: #e2e8f0; border-radius: 8px; padding: 5px 8px; outline: none; }
     .tree { flex: 1; overflow: auto; background: rgba(0,0,0,.25); border-radius: 8px; padding: 3px; }
-    .ti { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
-    .ti:hover { background: rgba(255,255,255,.07); } .ti.on { background: rgba(0,240,255,.18); outline: 1px solid rgba(0,240,255,.45); color: #00f0ff; font-weight: 700; }
-    .ti .eye { opacity: .7; width: 16px; text-align: center; } .ti .eye.off { opacity: .25; }
-    .ti .nm { overflow: hidden; text-overflow: ellipsis; flex: 1; } .ti small { color: #64748b; font-size: 10px; }
-    .ti.fold { color: #94a3b8; font-weight: 600; }
+    .ti { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; cursor: pointer; }
+    .ti.on { background: rgba(0,240,255,.18); color: #00f0ff; font-weight: 700; }
     .scroll { flex: 1; overflow: auto; padding: 6px 8px 14px; }
-    details { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); border-radius: 10px; margin-bottom: 6px; }
-    summary { cursor: pointer; padding: 7px 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; font-size: 10.5px; letter-spacing: .6px; }
+    details { background: rgba(255,255,255,.03); border-radius: 10px; margin-bottom: 6px; }
+    summary { cursor: pointer; padding: 7px 10px; font-weight: 700; color: #94a3b8; font-size: 10.5px; text-transform: uppercase; }
     .dbody { padding: 4px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
-    .rowf { display: flex; align-items: center; gap: 6px; } .rowf > label { width: 66px; color: #94a3b8; flex: none; }
-    .rowf .grow { flex: 1; } .wrapb { display: flex; flex-wrap: wrap; gap: 5px; }
-    input.num { width: 0; flex: 1; min-width: 0; background: #0b1220; border: 1px solid rgba(255,255,255,.12); color: #e2e8f0; border-radius: 6px; padding: 4px 5px; font: 11.5px ${MONO}; outline: none; user-select: text; }
-    input[type=range] { flex: 1; min-width: 0; accent-color: #00f0ff; } input[type=color] { width: 34px; height: 24px; border: 0; background: none; padding: 0; cursor: pointer; }
-    input.hex { width: 78px !important; font-family: ${MONO}; } .val { width: 38px; text-align: right; font: 11px ${MONO}; color: #94a3b8; }
-    select.cs { background: #0b1220; border: 1px solid rgba(255,255,255,.12); color: #e2e8f0; border-radius: 6px; padding: 4px; font: 12px system-ui, sans-serif; }
-    .note { color: #64748b; font-size: 10.5px; line-height: 1.35; }
-    .ax.on { background: #00f0ff; color: #001018; }
-    .ico { flex: none; vertical-align: -3px; }
-    .cb { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-    .cb.ib { padding: 6px 7px; }
-    .shelf .cb.ib { width: 36px; height: 34px; justify-content: center; padding: 0; }
-    .ti .eye { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-    .ctx { position: absolute; z-index: 60; min-width: 210px; display: none; background: rgba(17,26,46,.97); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 5px; box-shadow: 0 14px 40px rgba(0,0,0,.55); font: 12px system-ui, sans-serif; }
-    .ctx .mi { position: relative; display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 8px; cursor: pointer; color: #e2e8f0; }
-    .ctx .mi:hover { background: rgba(0,240,255,.16); } .ctx .mi.dis { opacity: .4; pointer-events: none; }
-    .ctx .mi .ml { flex: 1; } .ctx .mi .ico { width: 15px; display: inline-block; color: #7dd3fc; }
-    .kbd { font: 10.5px ${MONO}; color: #94a3b8; background: rgba(255,255,255,.07); padding: 1px 6px; border-radius: 5px; }
-    .ctx .msep { height: 1px; background: rgba(255,255,255,.1); margin: 4px 2px; }
-    .ctx .mhead { color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; padding: 5px 9px 2px; }
-    .ctx .sub { left: 100%; top: -6px; max-height: 70vh; overflow: auto; }
-    .ctx .mi:hover > .sub { display: block; }
-    .ctx.flip .sub { left: auto; right: 100%; }
-    .help { position: absolute; inset: 0; z-index: 70; display: none; background: rgba(5,8,16,.86); overflow: auto; padding: 40px; }
-    .help h2 { color: #00f0ff; font-size: 16px; margin-bottom: 14px; }
+    .rowf { display: flex; align-items: center; gap: 6px; } .rowf > label { width: 66px; color: #94a3b8; }
+    input.num { flex: 1; background: #0b1220; border: 1px solid rgba(255,255,255,.12); color: #e2e8f0; border-radius: 6px; padding: 4px; font: 11.5px ${MONO}; outline: none; }
+    input[type=range] { flex: 1; accent-color: #00f0ff; } input[type=color] { width: 34px; height: 24px; border: 0; background: none; cursor: pointer; }
+    .ctx { position: absolute; z-index: 60; display: none; background: rgba(17,26,46,.97); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 5px; }
+    .ctx .mi { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 8px; cursor: pointer; color: #e2e8f0; }
+    .ctx .mi:hover { background: rgba(0,240,255,.16); }
+    .help { position: absolute; inset: 0; z-index: 70; display: none; background: rgba(5,8,16,.86); padding: 40px; overflow: auto; }
     .hgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
-    .hsec { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 10px 12px; }
-    .hsec h3 { color: #94a3b8; font-size: 10.5px; letter-spacing: .6px; text-transform: uppercase; margin-bottom: 6px; }
-    .hrow { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
-    .grpt { color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; margin-top: 4px; }
-    ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: rgba(148,163,184,.3); border-radius: 8px; }
-    .cad button:focus-visible, .cad input:focus-visible { outline: 2px solid #00f0ff; outline-offset: 1px; }
-    .vsplit { width: 5px; flex: none; cursor: col-resize; background: rgba(255,255,255,.05); transition: background .15s; }
-    .hsplit { height: 5px; flex: none; cursor: row-resize; background: rgba(255,255,255,.05); transition: background .15s; }
-    .vsplit:hover, .hsplit:hover { background: #00f0ff; }
-    .grip { position: absolute; right: 12px; bottom: 9px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 4; border-right: 2px solid rgba(0,0,0,.45); border-bottom: 2px solid rgba(0,0,0,.45); border-radius: 0 0 4px 0; touch-action: none; }
-    .paintbar { position: absolute; top: 12px; left: 62px; z-index: 5; display: none; flex-direction: column; gap: 6px; width: 190px; background: rgba(15,23,42,.88); padding: 9px; border-radius: 12px; border: 1px solid rgba(255,255,255,.12); }
-    .pbt { color: #94a3b8; font-size: 10.5px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
-    .pbsw { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
-    .swatch { aspect-ratio: 1; border-radius: 6px; border: 2px solid transparent; cursor: pointer; padding: 0; }
-    .swatch:hover { transform: scale(1.12); } .swatch.on { border-color: #00f0ff; box-shadow: 0 0 0 1px #000 inset; }
+    .hsec { background: rgba(255,255,255,.04); border-radius: 12px; padding: 10px 12px; }
+    .vsplit, .hsplit { background: rgba(255,255,255,.05); }
+    .grip { position: absolute; right: 12px; bottom: 9px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 4; }
   `;
 
   const ctlReg = [];
@@ -2597,9 +2391,6 @@
     return sw;
   };
 
-  // =========================================================================
-  // 11. FLOATING MOD MENU
-  // =========================================================================
   const host = document.createElement("div");
   host.id = "fastroads-cad-host";
   host.style.cssText = "position:fixed;top:40px;left:20px;z-index:2147483645;";
@@ -2608,51 +2399,19 @@
   mhost.id = "fastroads-cad-modal-host";
   mhost.style.cssText = "position:fixed;inset:0;z-index:2147483646;display:none;";
 
-  const STOP = ["mousedown", "mouseup", "mousemove", "click", "dblclick", "touchstart", "touchmove", "touchend", "touchcancel",
-    "pointerdown", "pointermove", "pointerup", "pointercancel", "wheel", "contextmenu", "keydown", "keyup", "keypress", "input", "change"];
+  const STOP = ["mousedown", "mouseup", "mousemove", "click", "dblclick", "keydown", "keyup", "wheel", "pointerdown"];
   [host, mhost].forEach((h) => STOP.forEach((ev) => h.addEventListener(ev, (e) => e.stopPropagation())));
 
   const root = host.attachShadow({ mode: "open" });
   const mroot = mhost.attachShadow({ mode: "open" });
 
-  const svgs = [];
-  const mkSvg = () => {
-    const d = document.createElement("div");
-    d.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;pointer-events:none"><defs>
-      <filter id="lgfilter" filterUnits="userSpaceOnUse" x="0" y="0" width="700" height="700" color-interpolation-filters="sRGB">
-      <feImage x="0" y="0" width="700" height="700" preserveAspectRatio="none" result="map"/>
-      <feDisplacementMap in="SourceGraphic" in2="map" scale="36" xChannelSelector="R" yChannelSelector="G"/></filter></defs></svg>`;
-    const s = d.firstChild; svgs.push(s); return s;
-  };
-  const makeMap = (w, h, r, bezel) => {
-    const c = document.createElement("canvas"); c.width = w; c.height = h;
-    const ctx = c.getContext("2d"), img = ctx.createImageData(w, h), d = img.data;
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const px = x + 0.5 - w / 2, py = y + 0.5 - h / 2, qx = Math.abs(px) - (w / 2 - r), qy = Math.abs(py) - (h / 2 - r);
-      const dist = -(Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r);
-      let dx = 0, dy = 0;
-      if (dist >= 0 && dist < bezel) {
-        const t = 1 - dist / bezel, mag = t * t;
-        let nx, ny;
-        if (qx > 0 && qy > 0) { const l = Math.hypot(qx, qy); nx = Math.sign(px) * qx / l; ny = Math.sign(py) * qy / l; }
-        else if (qx > qy) { nx = Math.sign(px); ny = 0; } else { nx = 0; ny = Math.sign(py); }
-        dx = -nx * mag; dy = -ny * mag;
-      }
-      const i = (y * w + x) * 4;
-      d[i] = 128 + dx * 127; d[i + 1] = 128 + dy * 127; d[i + 2] = 128; d[i + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    return c.toDataURL();
-  };
-
   const minBtn = el("button", { className: "min", textContent: "–" });
-  const closeBtn = el("button", { className: "min", textContent: "×", style: "font-size:16px;line-height:22px;" });
+  const closeBtn = el("button", { className: "min", textContent: "×" });
   const dot = el("span", { className: "dot" });
-  const head = el("div", { className: "h" }, [el("span", {}, ["Fast Roads Studio ", dot]), el("div", { className: "win-btns" }, [minBtn, closeBtn])]);
+  const head = el("div", { className: "h" }, [el("span", {}, ["Fast Roads Studio v11", dot]), el("div", { className: "win-btns" }, [minBtn, closeBtn])]);
   const menuStatus = el("div", { className: "status", textContent: "Ready" });
   statusEls.push(menuStatus);
 
-  // --- tab 0: Studio ---
   const vehicleDropdown = el("select", { className: "glass-select" });
   ["Roadster", "Coach", "Bike", "Lambo", "Supercar", "Aircraft"].forEach((t) => {
     const o = el("option", { value: t, textContent: t });
@@ -2664,616 +2423,357 @@
     if (v === "Aircraft") { Studio.aircraftMode(true); return; }
     if (S.aircraft) Studio.aircraftMode(false);
     Engine.setVehicleType(v);
-    setTimeout(() => { if (Studio.ready && History.index < 0) Studio.loadCar(); }, 1600); // re-import the jet's meshes
+    setTimeout(() => { if (Studio.ready && History.index < 0) Studio.loadCar(); }, 1600);
   };
+
   const diag = el("div", { className: "diag" });
   const chip = (txt, ok) => el("span", { className: "chip " + (ok ? "ok" : "no"), textContent: txt });
   const renderDiag = () => {
     diag.innerHTML = "";
-    const car = Engine.car;
-    diag.appendChild(chip("THREE (game)", !!Engine.gameThree));
-    diag.appendChild(chip("Car", !!car));
-    diag.appendChild(chip("Editor", Studio.ready));
-    diag.appendChild(chip(Studio.objs.length + " meshes", Studio.objs.length > 0));
-    dot.classList.toggle("bad", !car);
+    const renderDiag = () => {
+    diag.innerHTML = "";
+    const car = Engine.scan();
+    const g = Engine.gameThree;
+    diag.appendChild(chip("Car: " + (car ? "Found" : "Missing"), !!car));
+    diag.appendChild(chip("THREE: " + (g ? "Found" : "Missing"), !!g));
+    dot.className = "dot" + (car && g ? "" : " bad");
   };
-  const launchBtn = el("button", { className: "rbtn launch" }); launchBtn.innerHTML = icon("box", 16) + " Open Fullscreen CAD Studio";
-  const page0 = el("div", { className: "pg" }, [
-    el("div", { className: "card" }, [el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Vehicle model", el("small", {}, ["Switch the game's car type"])]), vehicleDropdown])]),
-    el("div", { className: "card" }, [diag,
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Auto-apply saved design", el("small", {}, ["Re-apply on load / car change"])]), mkSwitch(S.autoApply, (v) => { S.autoApply = v; }, "autoApply")]),
-      el("div", { className: "row" }, [
-        el("button", { className: "rbtn", textContent: "Reload car", onclick: () => Studio.loadCar() }),
-        el("button", { className: "rbtn", textContent: "Apply saved", onclick: () => Project.loadSaved(false) }),
-        el("button", { className: "rbtn", textContent: "Save design", onclick: () => Project.saveLocal() })
-      ])]),
-    el("div", { className: "card" }, [launchBtn]),
-    el("div", { className: "card" }, [el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Reset settings", el("small", {}, ["Every option back to default (your saved design is kept)"])]), el("button", { className: "rbtn", textContent: "Reset all", onclick: () => resetAll() })])])
-  ]);
 
-  // --- tab 1: Physics ---
-  const applyWheels = () => {
-    const c = Engine.car;
-    if (!c || !c.wheels) return updateStatus("car.wheels not found in this game build");
-    const w = c.wheels;
-    if ("radius" in w) w.radius = S.wheelRadius;
-    if ("length" in w) w.length = S.wheelbase;
-  };
-  const page1 = el("div", { className: "pg hide" }, [
-    el("div", { className: "card" }, [
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Engine power", el("small", {}, ["Scales top speed & acceleration (1.0 = stock)"])]), stepper(S.enginePower, 0.1, 20, 0.1, (v) => { S.enginePower = v; }, "enginePower").wrap]),
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Gravity", el("small", {}, ["m/s² (stock −9.81)"])]), stepper(S.gravityY, -40, 10, 0.5, (v) => { S.gravityY = v; }, "gravityY").wrap])]),
-    el("div", { className: "card" }, [
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Wheel radius", el("small", {}, ["Applied only if your build exposes it"])]), stepper(S.wheelRadius, 0.15, 0.8, 0.02, (v) => { S.wheelRadius = v; applyWheels(); }, "wheelRadius").wrap]),
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Wheelbase", el("small", {}, ["Axle spacing"])]), stepper(S.wheelbase, 1.5, 4.5, 0.05, (v) => { S.wheelbase = v; applyWheels(); }, "wheelbase").wrap])]),
-    el("div", { className: "card" }, [
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["No-clip", el("small", {}, ["Ignore barrier collisions"])]), mkSwitch(S.noClip, (v) => { S.noClip = v; }, "noClip")]),
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Infinite boost", el("small", {}, ["Hold W / ↑ to keep accelerating"])]), mkSwitch(S.infiniteBoost, (v) => { S.infiniteBoost = v; }, "infiniteBoost")]),
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Anti-drift grip", el("small", {}, ["Zero lateral slip"])]), mkSwitch(S.infiniteGrip, (v) => { S.infiniteGrip = v; }, "infiniteGrip")]),
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Jet mode", el("small", {}, ["Space = lift, Shift = afterburner (experimental)"])]), mkSwitch(S.jetMode, (v) => { S.jetMode = v; }, "jetMode")]),
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Jet power", el("small", {}, ["Lift & thrust strength"])]), stepper(S.jetPower, 0.1, 10, 0.1, (v) => { S.jetPower = v; }, "jetPower").wrap])])
-  ]);
-
-  // --- tab 2: Internals ---
-  const searchIn = el("input", { type: "text", placeholder: "Search property path…", style: "background:rgba(0,0,0,.2);border:0;border-radius:12px;padding:8px 12px;color:#000;outline:none;" });
-  const scroller = el("div", { style: "height:240px;overflow-y:auto;resize:vertical;background:rgba(0,0,0,.2);border-radius:18px;padding:4px;" });
-  const renderTable = () => {
-    scroller.innerHTML = "";
-    const car = Engine.scan(true);
-    if (!car) { scroller.appendChild(el("div", { style: "padding:16px;text-align:center;opacity:.6;" }, ["Car not spawned yet. Start driving first."])); return; }
-    const q = searchIn.value.trim().toLowerCase(), rows = [], seen = new Set();
-    const walk = (prefix, obj, depth) => {
-      if (!obj || depth > 2 || seen.has(obj)) return;
-      seen.add(obj);
-      for (const k of Object.keys(obj)) {
-        let val; try { val = obj[k]; } catch (e) { continue; }
-        const path = prefix + "." + k;
-        if (typeof val === "number" || typeof val === "string" || typeof val === "boolean") { if (!q || path.toLowerCase().includes(q)) rows.push({ path, obj, key: k, val }); }
-        else if (val && typeof val === "object" && !Array.isArray(val) && !val.isObject3D && !val.isMaterial && !val.isBufferGeometry && !val.isTexture) walk(path, val, depth + 1);
-      }
+  const tabEls = [
+    el("div", { className: "tab on", textContent: "Vehicle" }),
+    el("div", { className: "tab", textContent: "Physics" }),
+    el("div", { className: "tab", textContent: "Studio" }),
+    el("div", { className: "tab", textContent: "Editor" })
+  ];
+  tabEls.forEach((t, i) => {
+    t.onclick = () => {
+      S.tab = i;
+      tabEls.forEach((x, j) => x.classList.toggle("on", j === i));
+      pgs.forEach((p, j) => p.classList.toggle("hide", j !== i));
     };
-    walk("car", car, 0);
-    rows.slice(0, 80).forEach((it) => {
-      const inp = el("input", { value: String(it.val), style: "width:110px;background:rgba(255,255,255,.15);border:0;border-radius:8px;padding:4px;color:#000;font:11px monospace;" });
-      inp.onchange = () => { const cur = it.obj[it.key]; if (typeof cur === "boolean") it.obj[it.key] = inp.value === "true"; else if (typeof cur === "number") { const n = Number(inp.value); if (!isNaN(n)) it.obj[it.key] = n; } else it.obj[it.key] = inp.value; };
-      scroller.appendChild(el("div", { style: "display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.08);" }, [
-        el("div", { style: "font:11px monospace;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:230px;", title: it.path }, [it.path]), inp]));
-    });
-    if (!rows.length) scroller.appendChild(el("div", { style: "padding:16px;text-align:center;opacity:.6;" }, ["No matching properties"]));
-  };
-  searchIn.oninput = renderTable;
-  const page2 = el("div", { className: "pg hide" }, [searchIn, scroller]);
-
-  const tabA = el("div", { className: "tab on", textContent: "Studio" }), tabB = el("div", { className: "tab", textContent: "Physics" }), tabC = el("div", { className: "tab", textContent: "Internals" }), tabD = el("div", { className: "tab", textContent: "Admin" });
-
-  // --- tab 3: Admin ---
-  const adminInfo = el("div", { className: "status", textContent: "Car: not checked" });
-  const conIn = el("input", { type: "text", placeholder: "JS, e.g. $car.metrics.topSpeed = 90", style: "background:rgba(0,0,0,.2);border:0;border-radius:12px;padding:8px 12px;color:#000;outline:none;width:100%;" });
-  const conOut = el("pre", { style: "font:11px monospace;max-height:110px;overflow:auto;white-space:pre-wrap;background:rgba(0,0,0,.2);border-radius:12px;padding:6px 8px;color:#000;min-height:28px;" });
-  const runCon = () => {
-    const code = conIn.value; if (!code.trim()) return;
-    window.$car = Engine.car;
-    let out;
-    try { const r = (0, eval)(code); out = r && typeof r === "object" ? JSON.stringify(r, (k, v) => (v && v.isObject3D ? "[Object3D]" : v), 1) : String(r); } catch (err) { out = "Error: " + err.message; }
-    conOut.textContent = String(out).slice(0, 700);
-  };
-  conIn.onkeydown = (e) => { if (e.key === "Enter") runCon(); };
-  const page3 = el("div", { className: "pg hide" }, [
-    el("div", { className: "card" }, [
-      el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Pause game in studio", el("small", {}, ["Freezes the game and blocks its keys until Exit"])]), mkSwitch(S.pauseGame, (v) => { S.pauseGame = v; }, "pauseGame")]),
-      el("div", { className: "row" }, [
-        el("button", { className: "rbtn", textContent: "Find car", onclick: () => { const p = Engine.deepScan(); adminInfo.textContent = p ? "Found car at " + p : "Car not found (start driving first)"; renderDiag(); } }),
-        el("button", { className: "rbtn", textContent: "Rescan", onclick: () => { Engine.scan(true); renderDiag(); adminInfo.textContent = Engine.car ? "Car linked" : "No car yet"; } }),
-        el("button", { className: "rbtn", textContent: "Reload editor", onclick: () => Studio.loadCar() })]),
-      adminInfo]),
-    el("div", { className: "card" }, [el("div", { className: "lbl" }, ["Console", el("small", {}, ["Runs in the page. $car = the live car. Press Enter."])]), conIn, conOut])
-  ]);
-
-  const tabs = el("div", { className: "tabs" }, [el("div", { className: "ind" }), tabA, tabB, tabC, tabD]);
-  const body = el("div", { className: "b" }, [tabs, page0, page1, page2, page3, menuStatus]);
-  const grip = el("div", { className: "grip", title: "Drag to resize" });
-  const panel = el("div", { className: "p" }, [head, body, grip]);
-  const setTab = (i) => {
-    S.tab = i;
-    [1, 2, 3].forEach((n) => tabs.classList.toggle("t" + n, i === n));
-    [tabA, tabB, tabC, tabD].forEach((t, j) => t.classList.toggle("on", j === i));
-    [page0, page1, page2, page3].forEach((p, j) => p.classList.toggle("hide", j !== i));
-    if (i === 0) renderDiag();
-    if (i === 2) renderTable();
-  };
-  tabA.onclick = () => setTab(0); tabB.onclick = () => setTab(1); tabC.onclick = () => setTab(2); tabD.onclick = () => setTab(3);
-
-  (() => {
-    let on = false, x0 = 0, w0 = 420;
-    grip.addEventListener("pointerdown", (e) => { on = true; x0 = e.clientX; w0 = panel.offsetWidth; grip.setPointerCapture(e.pointerId); e.preventDefault(); });
-    grip.addEventListener("pointermove", (e) => { if (!on) return; panel.style.width = clamp(w0 + e.clientX - x0, 340, 800) + "px"; });
-    const end = () => { if (!on) return; on = false; setTimeout(updateMap, 30); };
-    grip.addEventListener("pointerup", end); grip.addEventListener("pointercancel", end);
-  })();
-  const resetAll = () => {
-    Object.assign(S, JSON.parse(JSON.stringify(DEFAULTS)), { tab: S.tab, tool: "select", selMode: S.selMode, axis: null });
-    try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
-    ctlReg.forEach((f) => f());
-    if (Studio.ready) {
-      Studio.setPreview(S.preview); Studio.updateNeonViz();
-      Studio.objs.forEach((x) => x.rebuildOverlay());
-      Studio.setShading(S.shading, S.angle);
-      Studio.scheduleSync(); UI.refresh();
-    }
-    updateStatus("All settings reset to defaults");
-  };
-
-  // =========================================================================
-  // 12. FULLSCREEN CAD MODAL
-  // =========================================================================
-  const cad = el("div", { className: "cad" });
-  const menuEl = el("div", { className: "ctx" });
-  const helpEl = el("div", { className: "help" });
-  cad.appendChild(menuEl); cad.appendChild(helpEl);
-  cad.addEventListener("pointerdown", (e) => { if (UI.menuOpen() && !menuEl.contains(e.target)) UI.closeMenu(); }, true);
-  helpEl.onclick = () => UI.closeOverlays();
-  const view = el("div", { className: "view" });
-  const boxEl = el("div", { className: "boxsel" });
-  const hintEl = el("div", { className: "hint" });
-  const infoEl = el("div", { className: "vinfo" });
-  const caStatus = el("div", { className: "status", style: "padding:0 4px;color:#94a3b8;" });
-  statusEls.push(caStatus);
-
-  const modeBtns = {}, toolBtns = {};
-  const modeSeg = el("div", { className: "seg" }, [["object", "Object", "Tab / 0"], ["v", "Vertex", "1"], ["e", "Edge", "2"], ["f", "Face", "3"]].map(([m, l, t]) => {
-    const b = el("button", { textContent: l, title: t, onclick: () => Studio.setMode(m) });
-    modeBtns[m] = b; return b;
-  }));
-  const undoBtn = btn("[undo] Undo", () => History.undo(), "", "Ctrl+Z");
-  const redoBtn = btn("[redo] Redo", () => History.redo(), "", "Ctrl+Shift+Z");
-  const viewSeg = el("div", { className: "grp" }, [["persp", "Persp"], ["front", "Front"], ["right", "Side"], ["top", "Top"], ["under", "Under"]].map(([v, l]) => btn(l, () => Studio.setView(v), "sm")));
-  viewSeg.appendChild(btn("[frame] Frame", () => Studio.frameSel(), "sm", "."));
-
-  const exitStudio = () => {
-    if (Studio.xf) Studio.finishXf(true);
-    Studio.open = false; window.__FR_PAUSED = false; held.clear(); UI.closeOverlays();
-    window.removeEventListener("keydown", Studio.ctrlKeyHandler, true);
-    window.removeEventListener("keyup", Studio.blockKeys, true); window.removeEventListener("keypress", Studio.blockKeys, true);
-    mhost.style.display = "none";
-    host.style.display = "block";
-    Sync.run();
-    renderDiag();
-  };
-  const openStudio = () => {
-    if (!Studio.ready) { updateStatus("Editor is still starting (loading THREE.js)…"); Studio.init(view); return; }
-    Studio.open = true; window.__FR_PAUSED = !!S.pauseGame; held.clear();
-    window.addEventListener("keyup", Studio.blockKeys, true); window.addEventListener("keypress", Studio.blockKeys, true);
-    host.style.display = "none";
-    mhost.style.display = "block";
-    window.addEventListener("keydown", Studio.ctrlKeyHandler, true);
-    setTimeout(() => { Studio.resize(); UI.refresh(); Studio.canvas.focus(); }, 60);
-  };
-
-  cad.appendChild(el("div", { className: "cad-top" }, [
-    el("div", { className: "grp" }, [el("span", { className: "brand", textContent: "FAST ROADS CAD" }), modeSeg, undoBtn, redoBtn]),
-    el("div", { className: "grp" }, [viewSeg, btn("[revert] Reload car", () => { if (!History.stack.length || confirm("Reload from the live car? Unsaved edits will be lost.")) Studio.loadCar(); }, "", "Re-import meshes from the game"),
-      btn("[check] Sync to car", () => { Studio.objs.forEach((o) => { o.dirty.t = o.dirty.m = o.dirty.g = o.isEdited(); }); updateStatus(Sync.run() ? "Synced to live car" : "No live car to sync to"); }, "pri"),
-      btn("[help]", () => UI.toggleHelp(), "", "Keyboard shortcuts (F1)"), btn("[x] Exit", exitStudio, "dan", "Esc")])
-  ]));
-
-  const shelf = el("div", { className: "shelf" });
-  [["select", "select", "Select (B)"], ["move", "move", "Move (G)"], ["rotate", "rotate", "Rotate (R)"], ["scale", "scale", "Scale (S)"], ["paint", "paint", "Paint"]].forEach(([t, ic, ti]) => {
-    const b = btn("[" + ic + "]", () => { S.tool = t; UI.refresh(); }, "", ti); toolBtns[t] = b; shelf.appendChild(b);
   });
-  shelf.appendChild(el("hr"));
-  [["extrude", "Extrude (E)", () => Studio.extrude()], ["inset", "Inset (I)", () => Studio.insetFaces()], ["face", "Make face (F)", () => Studio.makeFace()],
-    ["subdiv", "Subdivide", () => Studio.subdivide()], ["merge", "Merge at center (M)", () => Studio.mergeSel("center")], ["split", "Separate (P)", () => Studio.separate()],
-    ["flip", "Flip normals", () => Studio.flipFaces()], ["mirror", "Mirror X copy (Ctrl+M)", () => Studio.mirrorObj()], ["trash", "Delete (X)", () => Studio.deleteSel()]
-  ].forEach(([ic, ti, fn]) => shelf.appendChild(btn("[" + ic + "]", fn, "", ti)));
+  const tabs = el("div", { className: "tabs" }, tabEls);
 
-  const axBtns = {};
-  const axisBar = el("div", { className: "grp" }, [
-    ...["x", "y", "z"].map((a) => { const b = btn(a.toUpperCase(), () => { S.axis = S.axis === a ? null : a; if (Studio.xf) { Studio.xf.axis = S.axis; Studio.applyXf(); } UI.refreshAxis(); }, "ax sm", "Lock axis"); axBtns[a] = b; return b; }),
-    (() => { const b = btn("Snap", () => { S.snap = !S.snap; UI.refreshAxis(); }, "sm", "Ctrl while dragging"); axBtns.snap = b; return b; })()
+  const pgs = [];
+
+  // Page 0: Vehicle / General
+  const pgVehicle = el("div", { className: "pg" }, [
+    el("div", { className: "card" }, [
+      el("div", { className: "row", textContent: "Vehicle Model" }, [vehicleDropdown]),
+      el("div", { className: "row", textContent: "Deep Scan" }, [btn("[search] Deep Scan", () => {
+        const p = Engine.deepScan();
+        updateStatus(p ? "Found car at " + p : "Car not found via deep scan");
+        renderDiag();
+      }, "pri")])
+    ]),
+    el("div", { className: "card" }, [
+      el("div", { className: "row", textContent: "Diagnostics" }, []),
+      diag
+    ])
   ]);
-  const SWATCH = ["#ff3b6b", "#ff7a1a", "#ffd60a", "#34c759", "#00f0ff", "#0a84ff", "#7c3aed", "#ff2bd6", "#ffffff", "#9aa4b2", "#334155", "#000000", "#ef4444", "#16a34a", "#1d4ed8", "#92400e"];
-  const paintBar = el("div", { className: "paintbar" });
-  const buildPaintBar = () => {
-    paintBar.innerHTML = "";
-    const pick = el("input", { type: "color", value: S.paintColor }), hex = el("input", { type: "text", className: "num hex", value: S.paintColor, maxLength: 7 });
-    const setC = (c) => { S.paintColor = c.toLowerCase(); pick.value = S.paintColor; hex.value = S.paintColor; paintBar.querySelectorAll(".swatch").forEach((b) => b.classList.toggle("on", b.title === S.paintColor)); };
-    pick.oninput = () => setC(pick.value);
-    hex.onchange = () => { let v = hex.value.trim(); if (v[0] !== "#") v = "#" + v; if (isHex(v)) setC(v); else hex.value = S.paintColor; };
-    paintBar.appendChild(el("div", { className: "pbt", textContent: "Paint colour" }));
-    paintBar.appendChild(el("div", { className: "pbsw" }, SWATCH.map((c) => el("button", { className: "swatch" + (S.paintColor === c ? " on" : ""), title: c, style: "background:" + c, onclick: () => setC(c) }))));
-    paintBar.appendChild(el("div", { className: "rowf" }, [pick, hex]));
-    paintBar.appendChild(el("div", { className: "note", textContent: "Object mode: click a part to recolour it. Edit modes: click or drag across faces." }));
+  pgs.push(pgVehicle);
+
+  // Page 1: Physics / Tuning
+  const pgPhysics = el("div", { className: "pg hide" }, [
+    el("div", { className: "card" }, [
+      el("div", { className: "row", textContent: "Engine Power Multiplier" }, [stepper(S.enginePower, 0.1, 10, 0.2, (v) => { S.enginePower = v; }, "enginePower").wrap]),
+      el("div", { className: "row", textContent: "Gravity (m/s²)" }, [stepper(S.gravityY, -30, 10, 1, (v) => { S.gravityY = v; }, "gravityY").wrap]),
+      el("div", { className: "row", textContent: "Infinite Grip" }, [mkSwitch(S.infiniteGrip, (v) => { S.infiniteGrip = v; }, "infiniteGrip")]),
+      el("div", { className: "row", textContent: "Infinite Boost" }, [mkSwitch(S.infiniteBoost, (v) => { S.infiniteBoost = v; }, "infiniteBoost")]),
+      el("div", { className: "row", textContent: "No-Clip Mode" }, [mkSwitch(S.noClip, (v) => { S.noClip = v; }, "noClip")])
+    ])
+  ]);
+  pgs.push(pgPhysics);
+
+  // Page 2: Studio / Jet & Neon
+  const pgStudio = el("div", { className: "pg hide" }, [
+    el("div", { className: "card" }, [
+      el("div", { className: "row", textContent: "Jet Ignition" }, [mkSwitch(S.jetIgnition, (v) => { S.jetIgnition = v; }, "jetIgnition")]),
+      el("div", { className: "row", textContent: "Jet Power" }, [stepper(S.jetPower, 0.2, 5, 0.2, (v) => { S.jetPower = v; }, "jetPower").wrap]),
+      el("div", { className: "row", textContent: "Neon Underglow" }, [mkSwitch(S.neonActive, (v) => { S.neonActive = v; Studio.updateNeonViz(); Sync.run(); }, "neonActive")]),
+      el("div", { className: "row", textContent: "Neon Color" }, [
+        (() => {
+          const inp = el("input", { type: "color", value: S.neonColor });
+          inp.oninput = (e) => { S.neonColor = e.target.value; Studio.updateNeonViz(); Sync.run(); };
+          return inp;
+        })()
+      ])
+    ])
+  ]);
+  pgs.push(pgStudio);
+
+  // Page 3: CAD Editor Launch
+  const launchBtn = btn("[box] Launch 3D CAD Studio", () => UI.enterStudio(), "launch");
+  const pgEditor = el("div", { className: "pg hide" }, [
+    el("div", { className: "card" }, [
+      el("div", { style: "text-align:center;padding:8px;font-weight:600;" }, ["Open the full 3D CAD editor to customize geometry, add custom parts, materials, and decals."]),
+      launchBtn
+    ])
+  ]);
+  pgs.push(pgEditor);
+
+  const bodyContent = el("div", { className: "b" }, [tabs, ...pgs, el("div", { className: "row" }, [menuStatus])]);
+  const panel = el("div", { className: "p" }, [head, bodyContent]);
+  root.appendChild(el("style", { textContent: css }));
+  root.appendChild(panel);
+
+  let dragging = false, dragX = 0, dragY = 0;
+  head.onpointerdown = (e) => {
+    if (e.target.closest("button")) return;
+    dragging = true; dragX = e.clientX - host.offsetLeft; dragY = e.clientY - host.offsetTop;
+    try { head.setPointerCapture(e.pointerId); } catch (err) {}
   };
-  view.append(shelf, paintBar, infoEl, boxEl, el("div", { className: "vbar" }, [hintEl, axisBar]));
-
-  const sidebar = el("div", { className: "side" });
-  const searchBox = el("input", { type: "text", className: "search", placeholder: "Search objects…" });
-  const treeEl = el("div", { className: "tree" });
-  searchBox.oninput = () => renderOutliner();
-  sidebar.appendChild(el("div", { className: "out" }, [el("div", { className: "grp", style: "justify-content:space-between" }, [el("b", { style: "color:#94a3b8;font-size:10.5px;letter-spacing:.6px", textContent: "OUTLINER" }), caStatus]), searchBox, treeEl]));
-  const propsEl = el("div", { className: "scroll" });
-  sidebar.appendChild(propsEl);
-  const hsplit = el("div", { className: "hsplit", title: "Drag to resize the outliner" });
-  sidebar.insertBefore(hsplit, propsEl);
-  function dragger(node, onMove) {
-    let on = false;
-    node.addEventListener("pointerdown", (e) => { on = true; node.setPointerCapture(e.pointerId); e.preventDefault(); });
-    node.addEventListener("pointermove", (e) => { if (on) onMove(e); });
-    const end = () => { on = false; Studio.resize(); };
-    node.addEventListener("pointerup", end); node.addEventListener("pointercancel", end);
-  }
-
-  const outEl = sidebar.firstChild;
-  dragger(hsplit, (e) => { const r = sidebar.getBoundingClientRect(); outEl.style.height = clamp(e.clientY - r.top, 90, r.height - 160) + "px"; });
-  const vsplit = el("div", { className: "vsplit", title: "Drag to resize the sidebar" });
-  cad.appendChild(el("div", { className: "cad-main" }, [view, vsplit, sidebar]));
-  dragger(vsplit, (e) => { sidebar.style.width = clamp(innerWidth - e.clientX, 240, Math.round(innerWidth * 0.6)) + "px"; Studio.resize(); });
-
-  // ---------- outliner ----------
-  const folderOpen = new Map();
-  const renderOutliner = () => {
-    treeEl.innerHTML = "";
-    if (!Studio.ready) return;
-    const q = searchBox.value.trim().toLowerCase();
-    const live = Studio.objs.filter((o) => !o.deleted);
-    const item = (o, depth, showPath) => {
-      const eye = el("span", { className: "eye" + (o.visible ? "" : " off"), title: "Show / hide" }); eye.innerHTML = icon(o.visible ? "eye" : "eyeoff", 14);
-      eye.onclick = (e) => {
-        e.stopPropagation();
-        const b = o.snap(); o.visible = !o.visible; o.applyMat(); o.rebuildOverlay();
-        Studio.commit(o, (o.visible ? "Show " : "Hide ") + o.name, b, "t");
-      };
-      const row = el("div", { className: "ti" + (Studio.active === o ? " on" : ""), style: "padding-left:" + (6 + depth * 14) + "px", onclick: () => Studio.setActive(o) }, [
-        eye, el("span", { className: "nm", textContent: o.name, title: o.path.join(" / ") }),
-        showPath ? el("small", { textContent: o.base.join("/") }) : el("small", { textContent: o.src ? "" : "new" })]);
-      return row;
-    };
-    if (q) {
-      live.filter((o) => o.path.join("/").toLowerCase().includes(q)).forEach((o) => treeEl.appendChild(item(o, 0, true)));
-      if (!treeEl.children.length) treeEl.appendChild(el("div", { className: "note", style: "padding:8px", textContent: "No matches" }));
-      return;
-    }
-    const rootN = { kids: new Map(), objs: [] };
-    live.forEach((o) => { let n = rootN; o.base.forEach((seg) => { if (!n.kids.has(seg)) n.kids.set(seg, { kids: new Map(), objs: [] }); n = n.kids.get(seg); }); n.objs.push(o); });
-    const draw = (n, depth, pathKey) => {
-      n.kids.forEach((child, name) => {
-        const key = pathKey + "/" + name, open = folderOpen.get(key) !== false;
-        treeEl.appendChild(el("div", { className: "ti fold", style: "padding-left:" + (6 + depth * 14) + "px", onclick: () => { folderOpen.set(key, !open); renderOutliner(); } }, [el("span", { textContent: open ? "▾" : "▸" }), el("span", { className: "nm", textContent: name })]));
-        if (open) draw(child, depth + 1, key);
-      });
-      n.objs.forEach((o) => treeEl.appendChild(item(o, depth, false)));
-    };
-    draw(rootN, 0, "");
+  head.onpointermove = (e) => {
+    if (!dragging) return;
+    host.style.left = Math.max(0, e.clientX - dragX) + "px";
+    host.style.top = Math.max(0, e.clientY - dragY) + "px";
   };
+  head.onpointerup = (e) => { dragging = false; try { head.releasePointerCapture(e.pointerId); } catch (err) {} };
 
-  // ---------- property widgets ----------
-  const numField = (val, onSet, step) => {
-    const i = el("input", { type: "number", className: "num", value: String(r5(val)), step: String(step || 0.05) });
-    i.onchange = () => { const v = parseFloat(i.value); if (!isNaN(v)) onSet(v); };
-    return i;
-  };
-  const sliderRow = (o, label, get, set, min, max, step, flags) => {
-    let pending = null;
-    const inp = el("input", { type: "range", min, max, step, value: get() }), val = el("span", { className: "val", textContent: Number(get()).toFixed(2) });
-    inp.oninput = () => { if (!pending) pending = o.snap(); set(+inp.value); val.textContent = (+inp.value).toFixed(2); o.applyMat(); Studio.markDirty(o, flags); Studio.scheduleSync(); };
-    inp.onchange = () => { if (pending) { const b = pending, a = o.snap(); pending = null; History.record("Edit " + label, () => o.restore(b), () => o.restore(a)); } };
-    return el("div", { className: "rowf" }, [el("label", { textContent: label }), inp, val]);
-  };
-  const colorRow = (o, label, get, set, onLive, flags) => {
-    let pending = null;
-    const pick = el("input", { type: "color", value: get() }), hex = el("input", { type: "text", className: "num hex", value: get(), maxLength: 7 });
-    const live = (v) => { if (!isHex(v)) return false; if (!pending) pending = o.snap(); set(v.toLowerCase()); onLive(); Studio.markDirty(o, flags); Studio.scheduleSync(); return true; };
-    const end = () => { if (pending) { const b = pending, a = o.snap(); pending = null; History.record("Edit " + label, () => o.restore(b), () => o.restore(a)); } };
-    pick.oninput = () => { hex.value = pick.value; live(pick.value); };
-    pick.onchange = end;
-    hex.onchange = () => { let v = hex.value.trim(); if (v[0] !== "#") v = "#" + v; if (live(v)) { pick.value = v; end(); } else hex.value = get(); };
-    return el("div", { className: "rowf" }, [el("label", { textContent: label }), pick, hex]);
-  };
-  const vec3Row = (label, vals, onSet, step) => el("div", { className: "rowf" }, [el("label", { textContent: label }), ...vals.map((v, i) => numField(v, (x) => onSet(i, x), step))]);
+  minBtn.onclick = () => { bodyContent.classList.toggle("hide"); };
+  closeBtn.onclick = () => { host.remove(); mhost.remove(); window.__fastRoadsStudioHost = null; };
 
-  const openState = { transform: true, material: true, paint: false, mesh: true, add: true, project: false, view: false };
-  const section = (key, title, kids) => {
-    const d = el("details", { open: !!openState[key] }, [el("summary", { textContent: title }), el("div", { className: "dbody" }, kids)]);
-    d.addEventListener("toggle", () => { openState[key] = d.open; });
-    return d;
-  };
-
-  const renderProps = () => {
-    propsEl.innerHTML = "";
-    if (!Studio.ready) { propsEl.appendChild(el("div", { className: "note", style: "padding:10px", textContent: "Waiting for THREE.js…" })); return; }
-    const o = Studio.active, T = Studio.T;
-    const edit = S.selMode !== "object";
-
-    if (o) {
-      const nameIn = el("input", { type: "text", value: o.name });
-      nameIn.onchange = () => { const v = nameIn.value.trim(); if (!v || v === o.name) return; const b = o.snap(); o.name = v; Studio.commit(o, "Rename", b, ""); };
-      propsEl.appendChild(el("div", { className: "dbody", style: "padding:4px 2px 8px" }, [
-        el("div", { className: "rowf" }, [nameIn]),
-        el("div", { className: "wrapb" }, [btn("[dup] Duplicate", () => Studio.duplicate(o), "sm", "Shift+D"), btn("[trash] Delete", () => Studio.deleteObj(o), "sm dan"),
-          btn("[revert] Revert", () => Studio.revert(o), "sm", "Back to the game's original"), btn("[frame] Frame", () => Studio.frameSel(), "sm")])]));
-
-      const e = new T.Euler().setFromQuaternion(o.mesh.quaternion), D = 180 / Math.PI;
-      const tfEdit = (fn) => { const b = o.snap(); fn(); o.mesh.updateMatrixWorld(true); o.rebuildOverlay(); Studio.commit(o, "Transform " + o.name, b, "t"); };
-      propsEl.appendChild(section("transform", "Transform", [
-        vec3Row("Position", o.mesh.position.toArray(), (i, v) => tfEdit(() => { const a = o.mesh.position.toArray(); a[i] = v; o.mesh.position.fromArray(a); }), 0.05),
-        vec3Row("Rotation°", [e.x * D, e.y * D, e.z * D], (i, v) => tfEdit(() => { const a = [e.x, e.y, e.z]; a[i] = (v * Math.PI) / 180; o.mesh.quaternion.setFromEuler(new T.Euler(a[0], a[1], a[2], e.order)); }), 5),
-        vec3Row("Scale", o.mesh.scale.toArray(), (i, v) => tfEdit(() => { const a = o.mesh.scale.toArray(); a[i] = v || 0.001; o.mesh.scale.fromArray(a); }), 0.05),
-        el("div", { className: "note", textContent: "Tip: G / R / S in the viewport, or drag with a transform tool." })]));
-
-      propsEl.appendChild(section("material", "Material (this part only)", [
-        colorRow(o, "Color", () => o.color, (v) => { o.color = v; }, () => { if (o.neon) o.emissive = o.color; o.refreshColors(); o.applyMat(); }, "m"),
-        sliderRow(o, "Metal", () => o.metal, (v) => { o.metal = v; }, 0, 1, 0.01, "m"),
-        sliderRow(o, "Rough", () => o.rough, (v) => { o.rough = v; }, 0, 1, 0.01, "m"),
-        sliderRow(o, "Opacity", () => o.opacity, (v) => { o.opacity = v; }, 0.05, 1, 0.01, "m"),
-        colorRow(o, "Emissive", () => o.emissive, (v) => { o.emissive = v; }, () => o.applyMat(), "m"),
-        sliderRow(o, "Glow", () => o.emInt, (v) => { o.emInt = v; }, 0, 4, 0.05, "m"),
-        el("div", { className: "rowf" }, [el("label", { textContent: "Glow light" }), mkSwitch(o.neon, (v) => { const b = o.snap(); o.neon = v; if (v) { o.emissive = o.color; if (o.emInt < 1.5) o.emInt = 2.5; } o.applyMat(); Studio.commit(o, "Glow light", b, "m"); })]),
-        sliderRow(o, "Light", () => o.neonInt, (v) => { o.neonInt = v; }, 0, 8, 0.1, "m"),
-        el("div", { className: "note", textContent: "Editor preview is lit by studio lights; the game's own lighting/environment decides how metallic parts look in-game." })]));
-
-      const pc = el("input", { type: "color", value: S.paintColor }), ph = el("input", { type: "text", className: "num hex", value: S.paintColor, maxLength: 7 });
-      pc.oninput = () => { S.paintColor = pc.value; ph.value = pc.value; };
-      ph.onchange = () => { let v = ph.value.trim(); if (v[0] !== "#") v = "#" + v; if (isHex(v)) { S.paintColor = v.toLowerCase(); pc.value = v; } else ph.value = S.paintColor; };
-      propsEl.appendChild(section("paint", "Paint (colour / faces)", [
-        el("div", { className: "rowf" }, [el("label", { textContent: "Brush" }), pc, ph]),
-        el("div", { className: "wrapb" }, [btn(S.selMode === "object" ? "Fill whole part" : "Paint selected faces", () => Studio.paintSelected(false), "sm pri"), btn("Clear face paint", () => Studio.paintSelected(true), "sm")]),
-        el("div", { className: "note", textContent: "Paint tool: click a part in Object mode to recolour just that part; in Vertex/Edge/Face mode click or drag across faces." })]));
-
-      const info = el("div", { className: "note", id: "meshinfo" });
-      const shadeSel = el("select", { className: "cs" }, ["flat", "smooth", "auto"].map((m) => { const op = el("option", { value: m, textContent: m }); if (m === S.shading) op.selected = true; return op; }));
-      shadeSel.onchange = () => Studio.setShading(shadeSel.value);
-      const med = Studio.median();
-      const meshKids = [
-        el("div", { className: "wrapb" }, [btn("Extrude", () => Studio.extrude(), "sm", "E"), btn("Delete", () => Studio.deleteSel(), "sm dan", "Del"), btn("Make face", () => Studio.makeFace(), "sm", "F"), btn("Subdivide", () => Studio.subdivide(), "sm"),
-          btn("Flip normals", () => Studio.flipFaces(), "sm"), btn("Recalc normals", () => Studio.recalc(), "sm")]),
-        el("div", { className: "wrapb" }, [btn("All", () => Studio.selectAll(), "sm", "A"), btn("None", () => Studio.selectNone(), "sm", "Alt+A"), btn("Invert", () => Studio.selectInvert(), "sm", "Ctrl+I")]),
-        el("div", { className: "rowf" }, [el("label", { textContent: "Shading" }), shadeSel, numField(S.angle, (v) => Studio.setShading(S.shading, clamp(v, 1, 180)), 5), el("span", { className: "val", textContent: "° auto" })]),
-        med && edit ? vec3Row("Median", med, (i, v) => Studio.setMedian(i, v), 0.05) : null,
-        info,
-        el("div", { className: "note", textContent: "Normals are kept per-corner so UV seams survive. 'auto' smooths edges below the angle." })
-      ];
-      propsEl.appendChild(section("mesh", "Mesh editing", meshKids));
-    } else {
-      propsEl.appendChild(el("div", { className: "note", style: "padding:6px 4px 10px", textContent: "No part selected. Click a part in the viewport or the outliner." }));
-    }
-
-    const partColor = el("input", { type: "color", value: S.partColor });
-    partColor.oninput = () => { S.partColor = partColor.value; };
-    const pgrp = (title, list) => [el("div", { className: "grpt", textContent: title }), el("div", { className: "wrapb" }, list.map(([t, l]) => btn("[plus] " + l, () => Studio.addPart(t, l), "sm")))];
-    propsEl.appendChild(section("add", "Add parts", [].concat(
-      pgrp("Basic", PARTS.basic), pgrp("Car", PARTS.car), pgrp("Aero & jets", PARTS.air), pgrp("Aircraft", PARTS.aircraft), pgrp("Neon (glows)", PARTS.neon),
-      [el("div", { className: "wrapb" }, [btn("[plus] Spawn full aircraft", () => Studio.spawnAircraft(true), "sm pri")]),
-        el("div", { className: "rowf" }, [el("label", { textContent: "New colour" }), partColor]),
-        el("div", { className: "note", textContent: "New parts spawn on top of the car and attach on sync. Neon parts get a real light. Shift+A opens this as a menu." })])));
-
-    const file = el("input", { type: "file", accept: ".json,application/json", style: "display:none" });
-    file.onchange = () => { if (file.files[0]) Project.importFile(file.files[0]); file.value = ""; };
-    propsEl.appendChild(section("project", "Project / export", [
-      el("div", { className: "wrapb" }, [btn("Export JSON", () => Project.exportJSON(), "sm pri", "Re-importable"), btn("Export OBJ", () => Project.exportOBJ(), "sm"), btn("Export part OBJ", () => Project.exportOBJ(Studio.active), "sm", "Only the selected part"), btn("Import JSON", () => file.click(), "sm"), file]),
-      el("div", { className: "wrapb" }, [btn("Save in browser", () => Project.saveLocal(), "sm"), btn("Load saved", () => Project.loadSaved(false), "sm"), btn("Revert all", () => { if (confirm("Revert every part to the original car?")) Studio.revertAll(); }, "sm dan")]),
-      el("div", { className: "rowf" }, [el("label", { textContent: "Auto-apply" }), mkSwitch(S.autoApply, (v) => { S.autoApply = v; })]),
-      el("div", { className: "note", textContent: "JSON stores only parts you changed (geometry, transforms, materials, per-face paint) and re-applies by part name." })]));
-
-    const chk = (label, key, fn) => el("div", { className: "rowf" }, [el("label", { style: "width:110px", textContent: label }), mkSwitch(S[key], (v) => { S[key] = v; if (fn) fn(); })]);
-    const neon = el("input", { type: "color", value: S.neonColor });
-    neon.oninput = () => { S.neonColor = neon.value; Studio.updateNeonViz(); Studio.scheduleSync(); };
-    propsEl.appendChild(section("view", "View & sync", [
-      chk("X-ray (see-through)", "xray", () => Studio.objs.forEach((x) => x.rebuildOverlay())),
-      chk("Wireframe all", "wire", () => Studio.objs.forEach((x) => x.rebuildOverlay())),
-      chk("Grid & axes", "grid"),
-      (() => {
-        const sel = el("select", { className: "cs" }, [["studio", "Studio"], ["sun", "Sunlight"], ["flat", "Flat colours"]].map(([v, l]) => { const op = el("option", { value: v, textContent: l }); if (S.preview === v) op.selected = true; return op; }));
-        sel.onchange = () => Studio.setPreview(sel.value);
-        return el("div", { className: "rowf" }, [el("label", { style: "width:110px", textContent: "Lighting" }), sel]);
-      })(),
-      chk("Live sync to car", "liveSync", () => Studio.scheduleSync()),
-      chk("Neon underglow", "neonActive", () => { Studio.updateNeonViz(); Studio.scheduleSync(); }),
-      el("div", { className: "rowf" }, [el("label", { textContent: "Neon colour" }), neon])]));
-    UI.refreshInfo();
-  };
-
-  // =========================================================================
-  // 13. UI facade used by the editor core
-  // =========================================================================
-  const defaultHint = () => {
-    if (S.tool === "paint") return "Paint: click / drag to colour · Esc = select tool";
-    if (S.tool !== "select") return S.tool[0].toUpperCase() + S.tool.slice(1) + " tool: drag a handle (arrows / dots / rings) · click empty space to select · G/R/S keys still work";
-    if (S.selMode === "object") return "Click = select · drag = orbit · RMB/MMB = orbit · Shift+RMB/MMB = pan · wheel = zoom · G/R/S transform · Shift+D duplicate";
-    return "Click = select · Shift = add · drag = box select · G/R/S · E extrude · F face · Del delete · Tab = object mode";
-  };
   const UI = {
     refresh() {
-      Object.keys(modeBtns).forEach((m) => modeBtns[m].classList.toggle("on", S.selMode === m));
-      Object.keys(toolBtns).forEach((t) => toolBtns[t].classList.toggle("on", S.tool === t));
-      undoBtn.disabled = History.index < 0; redoBtn.disabled = History.index >= History.stack.length - 1;
-      this.refreshAxis();
-      paintBar.style.display = S.tool === "paint" ? "flex" : "none";
-      if (S.tool === "paint") buildPaintBar();
-      if (!Studio.xf) hintEl.textContent = defaultHint();
-      renderOutliner();
-      renderProps();
       renderDiag();
+      ctlReg.forEach((f) => f());
+      if (this.refreshTree) this.refreshTree();
+      if (this.refreshInfo) this.refreshInfo();
     },
-    refreshAxis() {
-      ["x", "y", "z"].forEach((a) => axBtns[a].classList.toggle("on", S.axis === a));
-      axBtns.snap.classList.toggle("on", S.snap);
+    hint(t) { if (this.hintEl) this.hintEl.textContent = t; },
+    menuOpen() { return this.menuEl && this.menuEl.style.display === "block"; },
+    helpOpen() { return this.helpEl && this.helpEl.style.display === "block"; },
+    closeOverlays() { this.closeMenu(); this.toggleHelp(false); },
+    closeMenu() { if (this.menuEl) this.menuEl.style.display = "none"; },
+    toggleHelp(force) {
+      if (!this.helpEl) return;
+      const show = force !== undefined ? force : this.helpEl.style.display !== "block";
+      this.helpEl.style.display = show ? "block" : "none";
     },
-    refreshInfo() {
-      const o = Studio.active;
-      if (!o) { infoEl.textContent = Studio.objs.length + " parts"; return; }
-      const sel = o.sel;
-      const txt = o.poly.nv + " verts · " + o.poly.nt + " tris" + (S.selMode !== "object" ? " · sel " + o.selCount() : "");
-      infoEl.innerHTML = "";
-      infoEl.appendChild(el("div", {}, [o.name]));
-      infoEl.appendChild(el("div", { style: "color:#94a3b8" }, [txt]));
-      const mi = propsEl.querySelector("#meshinfo");
-      if (mi) mi.textContent = txt + (S.selMode === "v" ? " · " + sel.v.size + " verts selected" : S.selMode === "e" ? " · " + sel.e.size + " edges selected" : S.selMode === "f" ? " · " + sel.f.size + " faces selected" : "");
-    },
-    hint(t) { hintEl.textContent = t || defaultHint(); },
-    drawBox(b) {
-      if (!b) { boxEl.style.display = "none"; return; }
-      const r = view.getBoundingClientRect();
-      boxEl.style.display = "block";
-      boxEl.style.left = Math.min(b.x0, b.x1) - r.left + "px"; boxEl.style.top = Math.min(b.y0, b.y1) - r.top + "px";
-      boxEl.style.width = Math.abs(b.x1 - b.x0) + "px"; boxEl.style.height = Math.abs(b.y1 - b.y0) + "px";
-    },
-    menuOpen() { return menuEl.style.display === "block"; },
-    helpOpen() { return helpEl.style.display === "block"; },
-    closeMenu() { menuEl.style.display = "none"; },
-    closeOverlays() { this.closeMenu(); helpEl.style.display = "none"; },
-    toggleHelp() {
-      if (this.helpOpen()) return this.closeOverlays();
-      this.closeMenu();
-      if (!helpEl.firstChild) {
-        helpEl.appendChild(el("h2", { textContent: "Keyboard shortcuts (Blender-style)  -  click or Esc to close" }));
-        helpEl.appendChild(el("div", { className: "hgrid" }, HELP.map(([t, rows]) => el("div", { className: "hsec" }, [el("h3", { textContent: t })].concat(
-          rows.map(([k, d]) => el("div", { className: "hrow" }, [el("span", { textContent: d }), el("span", { className: "kbd", textContent: k })])))))));
-      }
-      helpEl.style.display = "block";
-    },
-    togglePanel(w) { const n = w === "side" ? sidebar : shelf; n.style.display = n.style.display === "none" ? "" : "none"; Studio.resize(); },
     showMenu(items, x, y) {
-      menuEl.innerHTML = "";
-      const build = (list, host) => list.forEach((it) => {
-        if (it === "-") { host.appendChild(el("div", { className: "msep" })); return; }
-        if (it.head) { host.appendChild(el("div", { className: "mhead", textContent: it.head })); return; }
-        const row = el("div", { className: "mi" + (it.dis ? " dis" : "") });
-        row.innerHTML = (it.icon ? icon(it.icon, 15) : '<span class="ico"></span>') + '<span class="ml"></span>' + (it.key ? '<span class="kbd"></span>' : "") + (it.sub ? icon("chevr", 13) : "");
-        row.querySelector(".ml").textContent = it.label;
-        if (it.key) row.querySelector(".kbd").textContent = it.key;
-        if (it.sub) { const sub = el("div", { className: "ctx sub" }); build(it.sub, sub); row.appendChild(sub); }
-        else row.onclick = (e) => { e.stopPropagation(); UI.closeMenu(); it.fn(); };
-        host.appendChild(row);
+      if (!this.menuEl) return;
+      this.menuEl.innerHTML = "";
+      items.forEach((it) => {
+        if (it.head) { this.menuEl.appendChild(el("div", { style: "padding:4px 9px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;", textContent: it.head })); return; }
+        const mi = el("div", { className: "mi", onclick: () => { this.closeMenu(); if (it.fn) it.fn(); } }, [it.label]);
+        this.menuEl.appendChild(mi);
       });
-      build(items, menuEl);
-      menuEl.style.display = "block";
-      menuEl.classList.toggle("flip", x > innerWidth - 460);
-      menuEl.style.left = Math.max(4, Math.min(x, innerWidth - 230)) + "px";
-      menuEl.style.top = Math.max(4, Math.min(y, innerHeight - menuEl.offsetHeight - 8)) + "px";
+      this.menuEl.style.left = Math.min(window.innerWidth - 200, x) + "px";
+      this.menuEl.style.top = Math.min(window.innerHeight - 300, y) + "px";
+      this.menuEl.style.display = "block";
     },
-    addItems() {
-      const g = (head, list) => [{ head }].concat(list.map(([t, l]) => ({ label: l, icon: "plus", fn: () => Studio.addPart(t, l) })));
-      return [].concat(g("Basic", PARTS.basic), g("Car", PARTS.car), g("Aero & jets", PARTS.air), g("Aircraft", PARTS.aircraft), g("Neon (glows)", PARTS.neon));
-    },
-    addMenu(x, y) { this.showMenu(this.addItems(), x, y); },
-    ctxMenu(x, y) {
-      const o = Studio.active, edit = S.selMode !== "object", St = Studio;
-      let items;
-      if (!edit) {
-        items = [{ head: o ? o.name : "Scene" }, { label: "Add part", icon: "plus", sub: this.addItems() }, "-",
-          { label: "Duplicate", icon: "dup", key: "Shift D", fn: () => St.duplicateMove(), dis: !o },
-          { label: "Mirror X copy", icon: "mirror", key: "Ctrl M", fn: () => St.mirrorObj(), dis: !o },
-          { label: "Hide", icon: "eyeoff", key: "H", fn: () => St.hideObj("sel"), dis: !o },
-          { label: "Hide others", key: "Shift H", fn: () => St.hideObj("others"), dis: !o },
-          { label: "Reveal all", icon: "eye", key: "Alt H", fn: () => St.hideObj("reveal") }, "-",
-          { label: "Clear location", key: "Alt G", fn: () => St.clearXf("p"), dis: !o },
-          { label: "Clear rotation", key: "Alt R", fn: () => St.clearXf("r"), dis: !o },
-          { label: "Clear scale", key: "Alt S", fn: () => St.clearXf("s"), dis: !o }, "-",
-          { label: "Edit mesh", icon: "face", key: "Tab", fn: () => St.setMode(St.lastEdit), dis: !o },
-          { label: "Delete", icon: "trash", key: "X", fn: () => St.deleteSel(), dis: !o }];
-      } else {
-        items = [{ head: { v: "Vertex", e: "Edge", f: "Face" }[S.selMode] + " mode" },
-          { label: "Extrude", icon: "extrude", key: "E", fn: () => St.extrude() },
-          { label: "Inset faces", icon: "inset", key: "I", fn: () => St.insetFaces() },
-          { label: "Make face", icon: "face", key: "F", fn: () => St.makeFace() },
-          { label: "Subdivide", icon: "subdiv", fn: () => St.subdivide() },
-          { label: "Merge", icon: "merge", key: "M", sub: [{ label: "At center", fn: () => St.mergeSel("center") }, { label: "By distance", fn: () => St.mergeSel("dist") }] },
-          { label: "Separate", icon: "split", key: "P", fn: () => St.separate() },
-          { label: "Flip normals", icon: "flip", fn: () => St.flipFaces() }, "-",
-          { label: "Select", sub: [{ label: "All", key: "A", fn: () => St.selectAll() }, { label: "None", key: "Alt A", fn: () => St.selectNone() }, { label: "Invert", key: "Ctrl I", fn: () => St.selectInvert() },
-            { label: "Linked", key: "L", fn: () => St.selectLinked() }, { label: "More", key: "Ctrl +", fn: () => St.growSel(1) }, { label: "Less", key: "Ctrl -", fn: () => St.growSel(-1) }] },
-          { label: "Paint selected", icon: "paint", fn: () => St.paintSelected(false) }, "-",
-          { label: "Object mode", icon: "box", key: "Tab", fn: () => St.setMode("object") },
-          { label: "Delete", icon: "trash", key: "X", fn: () => St.deleteSel() }];
+    addMenu(x, y) {
+      const items = [{ head: "Add Part" }];
+      for (const k in PARTS) {
+        items.push({ head: k.toUpperCase() });
+        PARTS[k].forEach(([t, lbl]) => { items.push({ label: lbl, fn: () => Studio.addPart(t, lbl) }); });
       }
       this.showMenu(items, x, y);
     },
-    exitStudio
+    ctxMenu(x, y) {
+      const o = Studio.active;
+      const items = [
+        { head: o ? o.name : "Studio" },
+        { label: "Add Part...", fn: () => this.addMenu(x, y) },
+        o ? { label: "Duplicate", fn: () => Studio.duplicate() } : null,
+        o ? { label: "Delete", fn: () => Studio.deleteObj(o) } : null,
+        { label: "Frame All", fn: () => Studio.frameAll() },
+        { label: "Export JSON", fn: () => Project.exportJSON() },
+        { label: "Export OBJ", fn: () => Project.exportOBJ() }
+      ].filter(Boolean);
+      this.showMenu(items, x, y);
+    },
+    drawBox(b) {
+      if (!this.boxEl) return;
+      if (!b) { this.boxEl.style.display = "none"; return; }
+      const x0 = Math.min(b.x0, b.x1), x1 = Math.max(b.x0, b.x1);
+      const y0 = Math.min(b.y0, b.y1), y1 = Math.max(b.y0, b.y1);
+      this.boxEl.style.cssText = "position:absolute;left:" + x0 + "px;top:" + y0 + "px;width:" + (x1 - x0) + "px;height:" + (y1 - y0) + "px;border:1px solid #00f0ff;background:rgba(0,240,255,0.1);z-index:50;pointer-events:none;display:block;";
+    },
+    enterStudio() {
+      if (Studio.open) return;
+      host.style.display = "none";
+      mhost.style.display = "block";
+      Studio.open = true;
+      if (!Studio.ready) Studio.init(cadView);
+      else Studio.resize();
+    },
+    exitStudio() {
+      if (!Studio.open) return;
+      mhost.style.display = "none";
+      host.style.display = "block";
+      Studio.open = false;
+    }
   };
 
-  launchBtn.onclick = openStudio;
+  const cadTop = el("div", { className: "cad-top" }, [
+    el("div", { className: "grp" }, [
+      el("span", { className: "brand", textContent: "FAST ROADS STUDIO v11" }),
+      btn("[check] Exit to Game", () => UI.exitStudio(), "pri")
+    ]),
+    el("div", { className: "grp" }, [
+      el("div", { className: "seg" }, [
+        (() => { const b = btn("[select]", () => { S.tool = "select"; UI.refresh(); }, "", "Select (Q)"); b.id = "t_select"; return b; })(),
+        (() => { const b = btn("[move]", () => { S.tool = "move"; UI.refresh(); }, "", "Move (G)"); b.id = "t_move"; return b; })(),
+        (() => { const b = btn("[rotate]", () => { S.tool = "rotate"; UI.refresh(); }, "", "Rotate (R)"); b.id = "t_rotate"; return b; })(),
+        (() => { const b = btn("[scale]", () => { S.tool = "scale"; UI.refresh(); }, "", "Scale (S)"); b.id = "t_scale"; return b; })(),
+        (() => { const b = btn("[paint]", () => { S.tool = "paint"; UI.refresh(); }, "", "Paint"); b.id = "t_paint"; return b; })()
+      ])
+    ]),
+    el("div", { className: "grp" }, [
+      btn("[save] Save", () => Project.saveLocal(), "", "Save Project"),
+      btn("[help] Help", () => UI.toggleHelp(), "", "Keyboard Shortcuts (F1)")
+    ])
+  ]);
 
-  // =========================================================================
-  // 14. MOUNT + WINDOW BEHAVIOUR
-  // =========================================================================
-  root.appendChild(el("style", { textContent: css }));
-  root.appendChild(mkSvg());
-  root.appendChild(panel);
-  mroot.appendChild(el("style", { textContent: css }));
-  mroot.appendChild(cad);
-  document.body.appendChild(mkSvg());
-  document.body.appendChild(host);
-  document.body.appendChild(mhost);
+  const cadView = el("div", { className: "view" });
+  const hintBox = el("div", { className: "hint" });
+  Studio.hintEl = hintBox;
 
-  Studio.init(view);
-  setTab(0);
+  const vinfoBox = el("div", { className: "vinfo" }, ["Vertices: 0 · Faces: 0"]);
+  UI.refreshInfo = () => {
+    const o = Studio.active;
+    if (!o || !o.poly) { vinfoBox.textContent = "No selection"; return; }
+    const p = o.poly;
+    vinfoBox.textContent = "Verts: " + p.nv + " · Faces: " + p.nt + " | Sel: " + o.selCount();
+  };
 
-  let lastW = 0, lastH = 0;
-  const updateMap = () => {
-    const w = panel.offsetWidth, h = panel.offsetHeight;
-    if (!w || !h || (w === lastW && h === lastH)) return;
-    lastW = w; lastH = h;
-    let url; try { url = makeMap(w, h, 34, 28); } catch (e) { return; }
-    svgs.forEach((s) => {
-      const f = s.querySelector("filter"), im = s.querySelector("feImage");
-      f.setAttribute("width", w); f.setAttribute("height", h); im.setAttribute("width", w); im.setAttribute("height", h);
-      im.setAttribute("href", url); im.setAttributeNS("http://www.w3.org/1999/xlink", "href", url);
+  const shelf = el("div", { className: "shelf" }, [
+    btn("[plus] Add Part", (e) => UI.addMenu(e.clientX, e.clientY)),
+    btn("[extrude] Extrude", () => Studio.extrude(), "", "Extrude (E)"),
+    btn("[face] Make Face", () => Studio.makeFace(), "", "Make Face (F)"),
+    btn("[subdiv] Subdivide", () => Studio.subdivide()),
+    btn("[inset] Inset", () => Studio.insetFaces(), "", "Inset Faces (I)"),
+    btn("[merge] Merge", () => Studio.mergeSel("center")),
+    btn("[split] Separate", () => Studio.separate(), "", "Separate (P)"),
+    btn("[mirror] Mirror X", () => Studio.mirrorObj()),
+    btn("[flip] Flip Normals", () => Studio.flipFaces()),
+    btn("[trash] Delete", () => Studio.deleteSel(), "", "Delete (X)")
+  ]);
+
+  const boxDiv = el("div");
+  UI.boxEl = boxDiv;
+
+  const vbar = el("div", { className: "vbar" }, [
+    el("div", { className: "seg" }, [
+      btn("Persp", () => Studio.setView("persp")),
+      btn("Front", () => Studio.setView("front")),
+      btn("Top", () => Studio.setView("top")),
+      btn("Right", () => Studio.setView("right"))
+    ]),
+    hintBox
+  ]);
+
+  cadView.append(shelf, vbar, vinfoBox, boxDiv);
+
+  const searchInput = el("input", { className: "search", placeholder: "Filter parts…" });
+  const treeContainer = el("div", { className: "tree" });
+  UI.refreshTree = () => {
+    treeContainer.innerHTML = "";
+    const q = searchInput.value.toLowerCase();
+    Studio.objs.forEach((o) => {
+      if (q && !o.name.toLowerCase().includes(q)) return;
+      const row = el("div", { className: "ti" + (Studio.active === o ? " on" : ""), onclick: () => Studio.setActive(o) }, [
+        icon(o.src ? "box" : "bolt", 13),
+        el("span", { textContent: o.name })
+      ]);
+      treeContainer.appendChild(row);
     });
   };
-  setTimeout(updateMap, 100);
-  panel.addEventListener("pointermove", (e) => {
-    const r = panel.getBoundingClientRect();
-    panel.style.setProperty("--mx", e.clientX - r.left + "px"); panel.style.setProperty("--my", e.clientY - r.top + "px");
+  searchInput.oninput = () => UI.refreshTree();
+
+  const outPanel = el("div", { className: "out" }, [
+    el("div", { className: "row" }, [el("b", { textContent: "Objects" }), btn("[plus] Add", (e) => UI.addMenu(e.clientX, e.clientY))]),
+    searchInput,
+    treeContainer
+  ]);
+
+  const scrollPanel = el("div", { className: "scroll" });
+  const detailsGroup = el("div", { className: "dbody" }, [
+    el("div", { className: "rowf" }, [el("label", { textContent: "Mode" }), (() => {
+      const seg = el("div", { className: "seg" }, [
+        btn("Obj", () => Studio.setMode("object")),
+        btn("Vert", () => Studio.setMode("v")),
+        btn("Edge", () => Studio.setMode("e")),
+        btn("Face", () => Studio.setMode("f"))
+      ]);
+      return seg;
+    })()])
+  ]);
+  const det1 = el("details", { open: true }, [el("summary", { textContent: "Selection & Edit" }), detailsGroup]);
+
+  const matGroup = el("div", { className: "dbody" }, [
+    el("div", { className: "rowf" }, [
+      el("label", { textContent: "Color" }),
+      (() => {
+        const inp = el("input", { type: "color", value: "#2dd4ff" });
+        inp.oninput = (e) => {
+          const o = Studio.active;
+          if (!o) return;
+          o.color = e.target.value; o.dirty.m = true; o.rebuild();
+          Studio.scheduleSync();
+        };
+        return inp;
+      })()
+    ]),
+    el("div", { className: "rowf" }, [
+      el("label", { textContent: "Metal" }),
+      (() => {
+        const rng = el("input", { type: "range", min: "0", max: "1", step: "0.05", value: "0.5" });
+        rng.oninput = (e) => {
+          const o = Studio.active; if (!o) return;
+          o.metal = parseFloat(e.target.value); o.dirty.m = true; o.applyMat();
+        };
+        return rng;
+      })()
+    ]),
+    el("div", { className: "rowf" }, [
+      el("label", { textContent: "Rough" }),
+      (() => {
+        const rng = el("input", { type: "range", min: "0", max: "1", step: "0.05", value: "0.5" });
+        rng.oninput = (e) => {
+          const o = Studio.active; if (!o) return;
+          o.rough = parseFloat(e.target.value); o.dirty.m = true; o.applyMat();
+        };
+        return rng;
+      })()
+    ])
+  ]);
+  const det2 = el("details", { open: true }, [el("summary", { textContent: "Material" }), matGroup]);
+
+  scrollPanel.append(det1, det2);
+  const sidePanel = el("div", { className: "side" }, [outPanel, scrollPanel]);
+
+  const cadMain = el("div", { className: "cad-main" }, [cadView, sidePanel]);
+  const cadRoot = el("div", { className: "cad" }, [cadTop, cadMain]);
+
+  const helpGrid = el("div", { className: "hgrid" });
+  HELP.forEach(([title, items]) => {
+    const sec = el("div", { className: "hsec" }, [el("b", { textContent: title })]);
+    items.forEach(([k, desc]) => {
+      sec.appendChild(el("div", { style: "display:flex;justify-content:space-between;margin-top:4px;font-size:11.5px;" }, [el("span", { textContent: k, style: "font-family:" + MONO + ";color:#00f0ff;" }), el("span", { textContent: desc })]));
+    });
+    helpGrid.appendChild(sec);
   });
+  const helpModal = el("div", { className: "help", onclick: () => UI.toggleHelp(false) }, [
+    el("div", { style: "max-width:600px;margin:40px auto;background:#111a2e;border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:14px;", onclick: (e) => e.stopPropagation() }, [
+      el("div", { style: "display:flex;justify-content:space-between;align-items:center;" }, [el("b", { style: "font-size:15px;", textContent: "Fast Roads Studio - Keyboard Shortcuts" }), btn("Close", () => UI.toggleHelp(false))]),
+      helpGrid
+    ])
+  ]);
+  UI.helpEl = helpModal;
 
-  // rubber-band drag for the floating menu
-  const rubber = (o) => (o === 0 ? 0 : Math.sign(o) * 36 * (1 - Math.exp(-Math.abs(o) / 80)));
-  const ZONE = 70;
-  let dx = 0, dy = 0, drag = false;
-  head.addEventListener("pointerdown", (e) => {
-    if (e.target === minBtn || e.target === closeBtn) return;
-    drag = true;
-    const r = host.getBoundingClientRect();
-    dx = e.clientX - r.left; dy = e.clientY - r.top;
-    head.setPointerCapture(e.pointerId);
-    panel.style.transform = "scale(1.02)";
-  });
-  head.addEventListener("pointermove", (e) => {
-    if (!drag) return;
-    const w = host.offsetWidth, h = host.offsetHeight, maxL = Math.max(0, innerWidth - w), maxT = Math.max(0, innerHeight - h);
-    const l = e.clientX - dx, t = e.clientY - dy;
-    const ol = l < 0 ? l : l > maxL ? l - maxL : 0, ot = t < 0 ? t : t > maxT ? t - maxT : 0;
-    const vl = Math.min(Math.max(l, 0), maxL) + rubber(ol), vt = Math.min(Math.max(t, 0), maxT) + rubber(ot);
-    host.style.left = vl + "px"; host.style.top = vt + "px";
-    const press = (d) => Math.min(1.6, Math.max(0, (ZONE - d) / ZONE));
-    const px = Math.max(press(vl), press(innerWidth - (vl + w))), py = Math.max(press(vt), press(innerHeight - (vt + h)));
-    const sx = (1 - 0.14 * px) * (1 + 0.05 * py), sy = (1 - 0.14 * py) * (1 + 0.05 * px);
-    const tilt = Math.min(Math.max(-(e.movementX || 0) * 0.6, -8), 8);
-    panel.style.transform = "scale(" + 1.02 * sx + "," + 1.02 * sy + ") skewX(" + tilt + "deg)";
-  });
-  const endDrag = () => { if (!drag) return; drag = false; panel.style.transform = ""; };
-  head.addEventListener("pointerup", endDrag);
-  head.addEventListener("pointercancel", endDrag);
+  const ctxMenu = el("div", { className: "ctx" });
+  UI.menuEl = ctxMenu;
+  document.addEventListener("pointerdown", (e) => { if (!ctxMenu.contains(e.target)) UI.closeMenu(); });
 
-  minBtn.onclick = () => { body.classList.toggle("hide"); minBtn.textContent = body.classList.contains("hide") ? "+" : "–"; setTimeout(updateMap, 60); };
-  closeBtn.onclick = () => { host.style.display = "none"; };
+  mroot.appendChild(el("style", { textContent: css }));
+  mroot.appendChild(cadRoot);
+  mroot.appendChild(helpModal);
+  mroot.appendChild(ctxMenu);
 
-  // Menu toggle (\ or `) — the studio's own shortcuts live in Studio.onKey
-  window.addEventListener("keydown", (e) => {
-    if (Studio.open) return;
-    const t = e.composedPath ? e.composedPath()[0] : e.target, tag = t && t.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
-    if (e.code === "Backslash" || e.code === "Backquote") { e.preventDefault(); host.style.display = host.style.display === "none" ? "block" : "none"; }
-  });
+  window.addEventListener("keydown", (e) => Studio.ctrlKeyHandler(e), true);
+  window.addEventListener("keyup", (e) => Studio.blockKeys(e), true);
 
-  setInterval(() => {
-    try {
-      const copy = Object.assign({}, S);
-      delete copy.tab; delete copy.tool; delete copy.selMode; delete copy.axis; delete copy.aircraft;
-      localStorage.setItem(KEY, JSON.stringify(copy));
-    } catch (e) { /* storage unavailable */ }
-  }, 2000);
-  setInterval(() => { if (!Studio.open && S.tab === 0) renderDiag(); }, 2500);
-
-  console.log("%c[FastRoads Studio v11 ready]%c Press '\\' or '`' for the menu.", "color:#00f0ff;font-weight:bold;", "color:inherit;");
+  updateStatus("Fast Roads Studio v11 ready");
 })();
