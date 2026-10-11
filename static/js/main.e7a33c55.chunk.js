@@ -12582,15 +12582,34 @@
             buildWheel: () => __frAircraftWheel(),
             icon: ur, audio: { roll: cr, engine: pr },
             wheels: { tyreWidth: 0, width: 1.6, length: 3.0, radius: 0.3, circumference: 1.885, travel: 0.1 },
-            metrics: { shadowMapSize: 9, steerSpeed: 1.2, accel: 14, reverse: 5, jerk: 30, brake: 8, mass: 1500, steerAccel: 959595,
-              maxSteer: 0.5, axleHeight: 0.3, dampening: 0.05, rockFactor: 3, drag: 0.0004, topSpeed: 101010, rollResistance: 0.1,
-              steerInterval: 1.3, slipBase: 0.35, slipMod: 0.1, aeroFactor: 0.2, headlightPos: { x: 0.3, y: 0.95, z: 3.1 } },
+            metrics: { 
+              shadowMapSize: 9, 
+              steerSpeed: 1.2, 
+              accel: 250,          // Blasts off instantly (was 14)
+              reverse: 5, 
+              jerk: 200,           // Removes input delay for instant throttle response (was 30)
+              brake: 25,           // Upgraded brakes to handle high-speed stops (was 8)
+              mass: 1200,          // Slightly lightened for faster takeoff (was 1500)
+              steerAccel: 959595,
+              maxSteer: 0.5, 
+              axleHeight: 0.3, 
+              dampening: 0.05, 
+              rockFactor: 3, 
+              drag: 0.00001,       // Minimized air drag so it never caps out early (was 0.0004)
+              topSpeed: 500000,    // Uncapped limit well past 400 mph (was 101010)
+              rollResistance: 0.05,// Reduced ground friction for a smoother roll (was 0.1)
+              steerInterval: 1.3, 
+              slipBase: 0.35, 
+              slipMod: 0.1, 
+              aeroFactor: 0.02,    // Minimized aerodynamic resistance (was 0.2)
+              headlightPos: { x: 0.3, y: 0.95, z: 3.1 } 
+            },
             cameras: {
               Chase: { pitch: { near: 0.25, far: 0.18 }, yOffset: { near: 1.8, far: 2.6 }, posOffset: [0, 0, 1.5], range: { near: 10, far: 14 }, farSpeed: 120, smoothFactor: 1.4 },
               ChaseFar: { pitch: { near: 0.22, far: 0.12 }, yOffset: { near: 2.5, far: 4 }, posOffset: [0, 0, 1.5], range: { near: 16, far: 22 }, farSpeed: 120, smoothFactor: 1.2 },
               FirstPerson: { pitch: { near: 0.04, far: 0.04 }, yOffset: { near: 1.35, far: 1.35 }, posOffset: [0, 0, 1.7], range: { near: 0.75, far: 0.75 }, farSpeed: 120, smoothFactor: 0.3, hideVehicle: !0 },
             },
-          },
+          }
           Rover: {
             enabled: !1,
             name: "Rover",
