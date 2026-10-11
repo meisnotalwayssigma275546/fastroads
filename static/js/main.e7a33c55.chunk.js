@@ -17112,59 +17112,15 @@ function __frLoad(loader, mod, def, key, cb) {
   loader.load(mod.default, cb);
 }
 // per-frame flight state (called at the top of updateWheelMotion)
-let afterburnerActive = false;
-window.addEventListener("keydown", (e) => {
-  if (e.code === "KeyN" && !e.repeat) afterburnerActive = !afterburnerActive;
-});
-
 function __frAcPrep(vc, dt) {
   const d = vc.vehicleDef;
   if (!d || !d.aircraft) { vc.liftAcc = 0; vc.acAir = false; return; }
   const k = input.key, ws = vc.wheels.children;
-
-  // 1. Blade Rotation Sync (Rotates at wheel angular speed)
-  const prop = z.geo.getObjectByName("propa_black");
-  const propB = z.geo.getObjectByName("propb_black");
-  if (prop && ws[0]) {
-    const spinRate = (ws[0].dS / (z.wheels.circumference || 2.1)) * Math.PI * 8;
-    prop.rotation.z += spinRate + (z.speed < 1 ? 0.2 : 0);
-    if (propB) propB.rotation.z = prop.rotation.z;
-  }
-
-  // 2. Pitch / Elevation (I / K keys)
   const tgt = (k.KeyI ? 1 : 0) - (k.KeyK ? 1 : 0);
-  vc.acPitch = (vc.acPitch || 0) + (tgt - (vc.acPitch || 0)) * Math.min(1, 7 * dt);
-
-  // 3. Jet Engine Thrust & Afterburner (Key N)
-  if (d.isJet) {
-    const fL = z.geo.getObjectByName("__jet_flame_L");
-    const fR = z.geo.getObjectByName("__jet_flame_R");
-    const lgt = z.geo.getObjectByName("__jet_flame_light");
-    
-    if (afterburnerActive && (k.KeyW || z.speed > 5)) {
-      // Over 200 mph (~90 m/s) thrust acceleration
-      z.metrics.topSpeed = 135; // ~302 mph
-      z.drive = Math.min(2400, z.drive + 450 * dt);
-      if (fL && fR) {
-        fL.visible = fR.visible = true;
-        const pulse = 1.0 + Math.random() * 0.4;
-        fL.scale.set(pulse, pulse, 1.2 + Math.random() * 0.8);
-        fR.scale.copy(fL.scale);
-      }
-      if (lgt) lgt.intensity = 4.0;
-    } else {
-      z.metrics.topSpeed = 95;
-      if (fL && fR) fL.visible = fR.visible = false;
-      if (lgt) lgt.intensity = 0;
-    }
-  }
-
-  // 4. Lift generation
-  const liftSpeed = d.isJet ? 22 : 15;
-  const baseLift = Math.max(0, Math.min(1, (z.speed - liftSpeed) / (liftSpeed * 0.9)));
-  vc.liftAcc = -So.value * baseLift * (1 + 0.7 * vc.acPitch);
+  vc.acPitch = (vc.acPitch || 0) + (tgt - (vc.acPitch || 0)) * Math.min(1, 6 * dt);
+  const base = Math.max(0, Math.min(1, (z.speed - 15) / 17));       // lift builds from 15 to 32 m/s
+  vc.liftAcc = -So.value * base * (1 + 0.6 * vc.acPitch);             // nose-up trim adds lift
   vc.acAir = ws.length > 0 && ws.every((w) => w.shockPos <= 0.02);
-
   let sum = 0;
   for (const w of ws) sum += w.worldPos.y - w.pPos.y;
   vc.acVy = ws.length && vc.pdT ? sum / ws.length / vc.pdT : 0;
