@@ -519,7 +519,7 @@
       Standard: T.MeshStandardMaterial || (sm && sm.isMeshStandardMaterial ? sm.constructor : null),
       PointLight: T.PointLight || null,
       sampleMat: sm || null, Material: sm ? sm.constructor : null,
-      Color: T.Color || (sm && sm.color ? sm.color.constructor : null)
+      Color: T.Color || (sm && sm.color ? sm.color.constructor : null),
       Sphere: (window.__FR_GT || {}).Sphere || T.SphereGeometry || null,
       Basic: (window.__FR_GT || {}).Basic || T.MeshBasicMaterial || null
     };

@@ -12582,8 +12582,8 @@
             buildWheel: () => __frAircraftWheel(),
             icon: ur, audio: { roll: cr, engine: pr },
             wheels: { tyreWidth: 0, width: 1.6, length: 3.0, radius: 0.3, circumference: 1.885, travel: 0.1 },
-            metrics: { shadowMapSize: 9, steerSpeed: 1.2, accel: 14, reverse: 5, jerk: 30, brake: 8, mass: 1500, steerAccel: 8,
-              maxSteer: 0.5, axleHeight: 0.3, dampening: 0.05, rockFactor: 3, drag: 0.0004, topSpeed: 140, rollResistance: 0.1,
+            metrics: { shadowMapSize: 9, steerSpeed: 1.2, accel: 14, reverse: 5, jerk: 30, brake: 8, mass: 1500, steerAccel: 959595,
+              maxSteer: 0.5, axleHeight: 0.3, dampening: 0.05, rockFactor: 3, drag: 0.0004, topSpeed: 101010, rollResistance: 0.1,
               steerInterval: 1.3, slipBase: 0.35, slipMod: 0.1, aeroFactor: 0.2, headlightPos: { x: 0.3, y: 0.95, z: 3.1 } },
             cameras: {
               Chase: { pitch: { near: 0.25, far: 0.18 }, yOffset: { near: 1.8, far: 2.6 }, posOffset: [0, 0, 1.5], range: { near: 10, far: 14 }, farSpeed: 120, smoothFactor: 1.4 },
