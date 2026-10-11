@@ -19,50 +19,34 @@
     return;
   }
   (() => {
-  const showModError = (message) => {
-    const popup = document.querySelector("#achievement");
-    if (!popup) {
-      console.error("Achievement container not found.");
-      return;
-    }
+  const popup = document.querySelector("#achievement");
 
-    popup.innerHTML = `
-      <div id="achievement-title">mod.js Error</div>
-      <div id="achievement-body"></div>
-      <div id="achievement-unlocked">error detected</div>
-    `;
+  if (!popup) {
+    console.warn("mod.js loaded, but the achievement UI is not available yet.");
+    return;
+  }
 
-    popup.querySelector("#achievement-body").textContent = message;
-    popup.classList.add("achievement-active");
+  popup.innerHTML = `
+    <div id="achievement-title">mod.js Loaded</div>
+    <div id="achievement-body">UI loaded successfully. No errors detected!</div>
+    <div id="achievement-unlocked">loaded successfully</div>
+  `;
 
-    const soundUrl = performance.getEntriesByType("resource")
-      .map(resource => resource.name)
-      .find(url => url.includes("achievement.3ef707de.wav"));
+  popup.classList.add("achievement-active");
 
-    if (soundUrl) {
-      const audio = new Audio(soundUrl);
-      audio.play().catch(console.error);
-    }
+  const soundUrl = performance.getEntriesByType("resource")
+    .map(resource => resource.name)
+    .find(url => url.includes("achievement.3ef707de.wav"));
 
-    clearTimeout(window.__modErrorAnnouncementTimer);
-    window.__modErrorAnnouncementTimer = setTimeout(() => {
-      popup.classList.remove("achievement-active");
-      popup.innerHTML = "";
-    }, 10000);
-  };
+  if (soundUrl) {
+    const audio = new Audio(soundUrl);
+    audio.play().catch(() => {});
+  }
 
-  window.addEventListener("error", event => {
-    showModError(
-      `${event.message}${event.lineno ? ` (Line ${event.lineno})` : ""}`
-    );
-  });
-
-  window.addEventListener("unhandledrejection", event => {
-    const reason = event.reason;
-    showModError(reason?.stack || reason?.message || String(reason));
-  });
-
-  window.__showModError = showModError;
+  setTimeout(() => {
+    popup.classList.remove("achievement-active");
+    popup.innerHTML = "";
+  }, 10000);
   })();
 
   const RAF = window.requestAnimationFrame.bind(window); // un-wrapped rAF for the editor loop
