@@ -2693,7 +2693,7 @@
     })()])
   ]);
   const det1 = el("details", { open: true }, [el("summary", { textContent: "Selection & Edit" }),
-  const scrollPanel = el("div", { className: "scroll" }),
+  const scrollPanel = el("div", { className: "scroll" });
   const detailsGroup = el("div", { className: "dbody" }, [
     el("div", { className: "rowf" }, [el("label", { textContent: "Mode" }), (() => {
       const seg = el("div", { className: "seg" }, [
