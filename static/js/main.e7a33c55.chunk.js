@@ -12506,6 +12506,75 @@
             },
             cameras: xr,
           },
+          Aircraft: {
+            enabled: !0,
+            name: "Aircraft",
+            skins: [],
+            aircraft: !0,
+            bodyObj: { default: null },
+            wheelObj: { default: null },
+            buildBody: () => __frAircraftBody(),
+            buildWheel: () => __frAircraftWheel(),
+            icon: ur,
+            audio: { roll: cr, engine: pr },
+            wheels: {
+              tyreWidth: 0,
+              width: 1,
+              length: 1.9,
+              radius: 0.3,
+              circumference: 1.885,
+              travel: 0.1,
+            },
+            metrics: {
+              shadowMapSize: 7,
+              steerSpeed: 1.2,
+              accel: 12,
+              reverse: 5,
+              jerk: 30,
+              brake: 7,
+              mass: 900,
+              steerAccel: 8,
+              maxSteer: 0.5,
+              axleHeight: 0.3,
+              dampening: 0.05,
+              rockFactor: 3,
+              drag: 0.0006,
+              topSpeed: 85,
+              rollResistance: 0.11,
+              steerInterval: 1.3,
+              slipBase: 0.35,
+              slipMod: 0.1,
+              aeroFactor: 0.2,
+              headlightPos: { x: 0.3, y: 0.75, z: 2.5 },
+            },
+            cameras: {
+              Chase: {
+                pitch: { near: 0.25, far: 0.18 },
+                yOffset: { near: 1.4, far: 2 },
+                posOffset: [0, 0, 0.8],
+                range: { near: 6.5, far: 9 },
+                farSpeed: 70,
+                smoothFactor: 1.4,
+              },
+              ChaseFar: {
+                pitch: { near: 0.22, far: 0.12 },
+                yOffset: { near: 2, far: 3.2 },
+                posOffset: [0, 0, 0.8],
+                range: { near: 11, far: 15 },
+                farSpeed: 70,
+                smoothFactor: 1.2,
+              },
+              FirstPerson: {
+                pitch: { near: 0.04, far: 0.04 },
+                yOffset: { near: 1.05, far: 1.05 },
+                posOffset: [0, 0, 1.2],
+                range: { near: 0.75, far: 0.75 },
+                farSpeed: 70,
+                smoothFactor: 0.3,
+                hideVehicle: !0,
+              },
+            },
+          },
           Rover: {
             enabled: !1,
             name: "Rover",
@@ -12554,6 +12623,7 @@
           Coach: vehicles.Bus,
           Lambo: vehicles.Lambo,
           Supercar: vehicles.Supercar,
+          Aircraft: vehicles.Aircraft,
         },
         br = 1,
         fr = 2;
@@ -16964,7 +17034,96 @@
             this.debugShape.position.copy(this.targetPos);
         }
       };
-      const Il = [2.23694, 3.59999],
+      
+// ===== [FAST ROADS: AIRCRAFT] =====
+function __frLoad(loader, mod, def, key, cb) {
+  if (def && def[key]) { try { cb(def[key]()); } catch (err) { console.error("[FR] model build failed", err); } return; }
+  loader.load(mod.default, cb);
+}
+// per-frame flight state (called at the top of updateWheelMotion)
+function __frAcPrep(vc, dt) {
+  const d = vc.vehicleDef;
+  if (!d || !d.aircraft) { vc.liftAcc = 0; vc.acAir = false; return; }
+  const k = input.key, ws = vc.wheels.children;
+  const tgt = (k.KeyI ? 1 : 0) - (k.KeyK ? 1 : 0);
+  vc.acPitch = (vc.acPitch || 0) + (tgt - (vc.acPitch || 0)) * Math.min(1, 6 * dt);
+  const base = Math.max(0, Math.min(1, (z.speed - 15) / 17));       // lift builds from 15 to 32 m/s
+  vc.liftAcc = -So.value * base * (1 + 0.6 * vc.acPitch);             // nose-up trim adds lift
+  vc.acAir = ws.length > 0 && ws.every((w) => w.shockPos <= 0.02);
+  let sum = 0;
+  for (const w of ws) sum += w.worldPos.y - w.pPos.y;
+  vc.acVy = ws.length && vc.pdT ? sum / ws.length / vc.pdT : 0;
+}
+// pitch is driven directly while airborne (wheels have no suspension to hold it)
+function __frAcTilt(vc, dt, tilt) {
+  const d = vc.vehicleDef;
+  if (!d || !d.aircraft) return tilt;
+  if (!vc.acAir) { vc.acTilt = tilt; return tilt; }
+  if (vc.acTilt === undefined) vc.acTilt = tilt;
+  const p = vc.acPitch || 0;
+  vc.acTilt -= p * 0.9 * dt;
+  if (Math.abs(p) < 0.1) vc.acTilt *= 1 - Math.min(1, 0.3 * dt);      // slowly self-levels
+  vc.acTilt = Math.max(-0.8, Math.min(0.6, vc.acTilt));
+  return vc.acTilt;
+}
+// bank into turns while airborne
+function __frAcRoll(vc, dt, roll) {
+  const d = vc.vehicleDef;
+  if (!d || !d.aircraft) return roll;
+  if (!vc.acAir) { vc.acRoll = roll; return roll; }
+  if (vc.acRoll === undefined) vc.acRoll = roll;
+  const m = z.metrics.maxSteer || 0.5;
+  const tgt = -0.9 * Math.max(-1, Math.min(1, z.steer / m)) * Math.min(1, z.speed / 30);
+  vc.acRoll += (tgt - vc.acRoll) * Math.min(1, 3 * dt);
+  return vc.acRoll;
+}
+// wheel: axle along local Z, centred on the origin
+function __frAircraftWheel() {
+  const root = new r.G(), R = 0.3;
+  const add = (geo, name) => { const m = new r.B(geo, Cl.default); m.name = name; root.add(m); };
+  const tire = new r.Q(1, 12, 6); tire.scale(R, R, 0.07); add(tire, "tire_tire");
+  add(new r.e(R * 1.5, 0.05, 0.16), "sp1_grey");
+  add(new r.e(0.05, R * 1.5, 0.16), "sp2_grey");
+  const hub = new r.Q(1, 6, 4); hub.scale(0.07, 0.07, 0.1); add(hub, "hub_grey");
+  return root;
+}
+// low-poly single-seat aircraft. World axes: +Z forward, +X left, +Y up, rear axle at z=0.
+// (initVehicle rotates the body by -90deg, so everything sits in an inner group rotated +90deg.)
+function __frAircraftBody() {
+  const root = new r.G(), g = new r.G();
+  g.rotation.y = Math.PI / 2;
+  root.add(g);
+  const put = (geo, name, x, y, zz) => {
+    geo.translate(x, y, zz);
+    const m = new r.B(geo, Cl.default); m.name = name; g.add(m); return m;
+  };
+  const ell = (rx, ry, rz, name, x, y, zz, w, h) => { const geo = new r.Q(1, w || 8, h || 6); geo.scale(rx, ry, rz); return put(geo, name, x, y, zz); };
+  const box = (w, h, d, name, x, y, zz) => put(new r.e(w, h, d), name, x, y, zz);
+  ell(0.34, 0.38, 1.7, "fus_white", 0, 0.8, 0.75, 10, 8);
+  ell(0.17, 0.21, 1.3, "tail_white", 0, 0.88, -1.25, 8, 6);
+  ell(0.3, 0.3, 0.3, "cowl_grey", 0, 0.8, 2.4, 10, 6);
+  ell(0.12, 0.12, 0.28, "spin_red", 0, 0.8, 2.72, 8, 6);
+  ell(0.27, 0.23, 0.6, "cab_window", 0, 1.1, 0.75, 8, 6);
+  box(4.4, 0.07, 0.8, "wing_white", 0, 0.78, 0.25);
+  box(0.3, 0.075, 0.82, "tipl_red", 2.1, 0.78, 0.25);
+  box(0.3, 0.075, 0.82, "tipr_red", -2.1, 0.78, 0.25);
+  box(1.7, 0.05, 0.5, "hstab_white", 0, 0.92, -2.2);
+  box(0.06, 0.75, 0.6, "fin_red", 0, 1.3, -2.2);
+  for (const sx of [-1, 1]) for (const zz of [0, 1.9]) {
+    box(0.05, 0.45, 0.05, "leg_grey", sx * 0.5, 0.52, zz);
+    box(0.36, 0.04, 0.04, "strut_grey", sx * 0.3, 0.7, zz);
+  }
+  box(0.07, 1.3, 0.03, "propa_black", 0, 0.8, 2.92);
+  box(1.3, 0.07, 0.03, "propb_black", 0, 0.8, 2.92);
+  box(0.12, 0.08, 0.08, "hl1_headlight", 0.22, 0.72, 2.45);
+  box(0.12, 0.08, 0.08, "hl2_headlight", -0.22, 0.72, 2.45);
+  box(0.9, 0.7, 4.8, "sh_shadow", 0, 0.8, 0.3);
+  box(4.4, 0.08, 0.8, "sh2_shadow", 0, 0.78, 0.25);
+  return root;
+}
+// ===== [/FAST ROADS: AIRCRAFT] =====
+
+const Il = [2.23694, 3.59999],
         Dl = [1 / 1604, 0.001];
       const Ml = new r.U(0, 1, 0),
         Nl = 2 * Math.PI,
@@ -17000,6 +17159,7 @@
             side: r.k,
           }),
           null: new r.D({ color: 16711935 }),
+          red: new r.D({ color: 13777723 }),
         },
         zl = { turnSpeed: 0, turnAccel: 0, pTurnSpeed: 0 };
       var kl = class {
@@ -17263,7 +17423,7 @@
             let t = Object.keys(e.skins)[0];
             for (let i in e.skins[t]) n[i].color.setHex(e.skins[t][i]);
           }
-          a.load(i.default, (e) => {
+          __frLoad(a, i, e, "buildBody", (e) => {
             e.traverse((e) => {
               if (e.isMesh) {
                 let t = Cl.default,
@@ -17278,7 +17438,7 @@
               (e.rotation.y = -Math.PI / 2),
               z.geo.add(e);
           }),
-            a.load(s.default, (t) => {
+            __frLoad(a, s, e, "buildWheel", (t) => {
               t.traverse((e) => {
                 if (e.isMesh) {
                   let t = Cl.wheel,
@@ -17545,7 +17705,7 @@
         }
         updateWheelMotion(e) {
           let t;
-          for (t of ((this.printDebug = !this.printDebug),
+          for (t of ((this.printDebug = !this.printDebug), __frAcPrep(this, e),
           this.wheelDown
             .set(0, -z.wheels.radius, 0)
             .applyEuler(this.orientation),
@@ -17589,7 +17749,7 @@
                 zl.m < 1 && ((t.vel.x *= zl.m), (t.vel.z *= zl.m))),
               t.velDir.copy(t.vel).normalize(),
               0 == t.shockPos ? (t.dS = 0.98 * t.dS) : (t.dS = t.vel.length()),
-              t.vel.divideScalar(this.pdT),
+              t.vel.divideScalar(this.pdT), this.vehicleDef.aircraft && this.acAir && (t.vel.y = this.acVy),
               (t.speed = t.vel.length()),
               t.pPos.copy(t.worldPos),
               t.front
@@ -17641,8 +17801,7 @@
                 this.hasBoost && !this.autodrive
                   ? Math.max(0.75, Math.abs(t.lonDirDot))
                   : 1),
-              (zl.latNorm =
-                zl.wheelWeight *
+              (zl.latNorm = Math.max(zl.wheelWeight, this.vehicleDef.aircraft ? 0.9 : 0) *
                 Math.cos(t.groundAngle * Math.abs(t.latDirDot)) *
                 -So.value *
                 t.friction *
@@ -17714,11 +17873,11 @@
                   : (zl.rollResistance += Math.min(0.1, zl.rawSpeed / e)),
                 (t.acc.z -= zl.rollResistance)),
               (t.acc.y += z.downforce * So.value),
-              (t.acc.z *= Math.min(1, 3 * t.shockFactor)),
+              (t.acc.z *= this.vehicleDef.aircraft ? 1 : Math.min(1, 3 * t.shockFactor)),
               t.front
                 ? t.acc.applyEuler(this.steerOrientation)
                 : t.acc.applyEuler(this.orientation),
-              (t.acc.y += So.value),
+              (t.acc.y += So.value), this.vehicleDef.aircraft && ((t.acc.y += this.liftAcc), this.acAir && (t.acc.y -= 0.7 * t.vel.y)),
               t.onRoad ||
                 1 == t.groundNorm.y ||
                 ((t.acc.x -= zl.wheelWeight * So.value * t.groundNorm.x * 1.5),
@@ -17882,7 +18041,7 @@
                   : zl.tiltX < this.tiltX
                   ? (this.tiltX -= zl.tiltLerp * e)
                   : (this.tiltX += zl.tiltLerp * e),
-                (this.tiltX = Math.max(Math.min(1.3, this.tiltX), -1.3)),
+                (this.tiltX = Math.max(Math.min(1.3, __frAcTilt(this, e, this.tiltX)), -1.3)),
                 (this.sinTiltX = Math.sin(this.tiltX)),
                 (z.pitch = this.tiltX),
                 (this.orientation.x = this.tiltX),
@@ -17922,7 +18081,7 @@
                     this.wheels.children[3].slip) /
                   4)),
             (z.gradient = this.gradientX),
-            (this.tiltZ = Math.max(Math.min(1.3, this.tiltZ), -1.3)),
+            (this.tiltZ = Math.max(Math.min(1.3, __frAcRoll(this, e, this.tiltZ)), -1.3)),
             (this.orientation.z = this.tiltZ),
             (z.roll = this.tiltZ),
             (this.sinTiltZ = Math.sin(this.tiltZ)),
@@ -22429,6 +22588,7 @@
       window.qr = qr; window.gameScene = qr;
       window.Be = Be;
       window.gameInput = input;
+      window.__FR_GT = { Group: r.G, Object3D: r.G, Mesh: r.B, BufferGeometry: r.g, BufferAttribute: r.o, MeshStandardMaterial: r.F, Color: r.i, Vector3: r.U };
       // ====================================================
 
       h.a.render(
