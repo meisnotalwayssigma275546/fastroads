@@ -1,5 +1,5 @@
 /**
- * Fast Roads Studio v11  —  Slow Roads mod menu + fullscreen 3D CAD editor
+ * Fast Roads Studio v11  —  Slow Roads mod menu + fullscreen 3D CAR editor
  * Standalone script (mod.js). Paste into the console / load as a userscript.
  *
  * VIEWPORT   LMB click = select · LMB drag (object mode) = orbit · LMB drag (edit mode) = box select
@@ -414,7 +414,7 @@
   // =========================================================================
   // 2. SETTINGS
   // =========================================================================
-  const KEY = "fastroads_cad_studio_v9";
+  const KEY = "fastroads_CAR_studio_v9";
   const loadSaved = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } };
 
   const S = (window.__FR_S = {
@@ -568,7 +568,7 @@
   let _fxT = performance.now(), _spin = 0;
   function modFx(c) {
     const now = performance.now(), dt = Math.min(0.1, (now - _fxT) / 1000); _fxT = now;
-    const h = c.geo.getObjectByName("__mod_cad_parts__"); if (!h) return;
+    const h = c.geo.getObjectByName("__mod_CAR_parts__"); if (!h) return;
     const night = c.headlights ? 1 : 0, J = window.__FR_JET, rad = (c.wheels && c.wheels.radius) || 0.34;
     _spin = (_spin + ((c.speed || 0) / rad) * dt) % (Math.PI * 2);   // same rate as the wheels
     const lvl = J ? J.lvl : held.has("KeyW") ? (held.has("ShiftLeft") ? 1 : 0.25) : 0;
@@ -647,7 +647,7 @@
           if (held.has("KeyU")) { c.vel.multiplyScalar(1.015); c.vel.y = y; }
           if (held.has("KeyO")) { c.vel.multiplyScalar(0.985); c.vel.y = y; }
         }
-        const hp = c.geo.getObjectByName("__mod_cad_parts__");
+        const hp = c.geo.getObjectByName("__mod_CAR_parts__");
         if (hp) hp.rotation.x = -clamp(c.vel.y * 0.04, -0.5, 0.5);
       }
       if (S.jetMode && c.vel && typeof c.vel.y === "number") {
@@ -784,7 +784,7 @@
     },
 
     customs(car, G) {
-      let holder = car.geo.getObjectByName("__mod_cad_parts__");
+      let holder = car.geo.getObjectByName("__mod_CAR_parts__");
       const list = Studio.objs.filter((o) => !o.src && !o.deleted && o.visible);
       if (!holder && !list.length) return;
       if (!G.Group || !G.Mesh || !G.BufferGeometry || !G.BufferAttribute || !(G.Standard || G.sampleMat)) {
@@ -793,7 +793,7 @@
         console.warn("[FastRoads] missing game classes", miss, G);
         return 0;
       }
-      if (!holder) { holder = new G.Group(); holder.name = "__mod_cad_parts__"; car.geo.add(holder); }
+      if (!holder) { holder = new G.Group(); holder.name = "__mod_CAR_parts__"; car.geo.add(holder); }
       while (holder.children.length) {
         const ch = holder.children[0];
         holder.remove(ch);
@@ -2317,10 +2317,10 @@
           geo: o.poly.toJSON()
         };
       });
-      return { format: "fastroads-cad", version: 2, vehicle: Engine.currentType, objects: objs };
+      return { format: "fastroads-CAR", version: 2, vehicle: Engine.currentType, objects: objs };
     },
     apply(data) {
-      if (!data || data.format !== "fastroads-cad" || !Array.isArray(data.objects)) throw new Error("Not a Fast Roads project file");
+      if (!data || data.format !== "fastroads-CAR" || !Array.isArray(data.objects)) throw new Error("Not a Fast Roads project file");
       const T = Studio.T, before = Studio.snapAll();
       const byKey = new Map(Studio.objs.filter((o) => o.src).map((o) => [o.key, o]));
       // PATCH 5: drop existing custom parts first so re-loading doesn't duplicate them (undo restores them)
@@ -2530,9 +2530,9 @@
     .chip { font: 600 11px -apple-system, system-ui, sans-serif; padding: 3px 9px; border-radius: 10px; background: rgba(0,0,0,.18); }
     .chip.ok { background: rgba(52,199,89,.55); } .chip.no { background: rgba(255,69,58,.5); }
 
-    /* ---------- fullscreen CAD studio ---------- */
-    .cad { position: fixed; inset: 0; background: #0b1220; color: #e2e8f0; font: 12px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; display: flex; flex-direction: column; user-select: none; }
-    .cad-top { height: 46px; flex: none; background: #111a2e; border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; gap: 12px; }
+    /* ---------- fullscreen CAR studio ---------- */
+    .CAR { position: fixed; inset: 0; background: #0b1220; color: #e2e8f0; font: 12px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; display: flex; flex-direction: column; user-select: none; }
+    .CAR-top { height: 46px; flex: none; background: #111a2e; border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; gap: 12px; }
     .grp { display: flex; align-items: center; gap: 6px; }
     .brand { font-weight: 800; color: #00f0ff; letter-spacing: .4px; margin-right: 6px; }
     .seg { display: flex; background: #0b1220; border-radius: 9px; padding: 2px; border: 1px solid rgba(255,255,255,.08); }
@@ -2542,7 +2542,7 @@
     .cb:hover { background: #33446a; } .cb:disabled { opacity: .4; cursor: default; }
     .cb.pri { background: #00c8e0; color: #001018; border-color: #00f0ff; } .cb.dan { background: #b91c1c; border-color: #ef4444; }
     .cb.on { background: #00f0ff; color: #001018; } .cb.sm { padding: 3px 7px; font-size: 11px; }
-    .cad-main { flex: 1; display: flex; min-height: 0; }
+    .CAR-main { flex: 1; display: flex; min-height: 0; }
     .view { flex: 1; position: relative; min-width: 0; background: radial-gradient(circle at 50% 40%, #1c2a45 0%, #070b14 100%); overflow: hidden; }
     .shelf { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 4px; z-index: 5; background: rgba(15,23,42,.8); padding: 5px; border-radius: 12px; border: 1px solid rgba(255,255,255,.12); backdrop-filter: blur(6px); }
     .shelf .cb { text-align: left; min-width: 96px; background: transparent; border-color: transparent; color: #94a3b8; }
@@ -2597,7 +2597,7 @@
     .hrow { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
     .grpt { color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; margin-top: 4px; }
     ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: rgba(148,163,184,.3); border-radius: 8px; }
-    .cad button:focus-visible, .cad input:focus-visible { outline: 2px solid #00f0ff; outline-offset: 1px; }
+    .CAR button:focus-visible, .CAR input:focus-visible { outline: 2px solid #00f0ff; outline-offset: 1px; }
     .vsplit { width: 5px; flex: none; cursor: col-resize; background: rgba(255,255,255,.05); transition: background .15s; }
     .hsplit { height: 5px; flex: none; cursor: row-resize; background: rgba(255,255,255,.05); transition: background .15s; }
     .vsplit:hover, .hsplit:hover { background: #00f0ff; }
@@ -2631,11 +2631,11 @@
   // 11. FLOATING MOD MENU
   // =========================================================================
   const host = document.createElement("div");
-  host.id = "fastroads-cad-host";
+  host.id = "fastroads-CAR-host";
   host.style.cssText = "position:fixed;top:40px;left:20px;z-index:2147483645;";
   window.__fastRoadsStudioHost = host;
   const mhost = document.createElement("div");
-  mhost.id = "fastroads-cad-modal-host";
+  mhost.id = "fastroads-CAR-modal-host";
   mhost.style.cssText = "position:fixed;inset:0;z-index:2147483646;display:none;";
 
   const STOP = ["mousedown", "mouseup", "mousemove", "click", "dblclick", "touchstart", "touchmove", "touchend", "touchcancel",
@@ -2707,7 +2707,7 @@
     diag.appendChild(chip(Studio.objs.length + " meshes", Studio.objs.length > 0));
     dot.classList.toggle("bad", !car);
   };
-  const launchBtn = el("button", { className: "rbtn launch" }); launchBtn.innerHTML = icon("box", 16) + " Open Fullscreen CAD Studio";
+  const launchBtn = el("button", { className: "rbtn launch" }); launchBtn.innerHTML = icon("box", 16) + " Open Fullscreen CAR Studio";
   const page0 = el("div", { className: "pg" }, [
     el("div", { className: "card" }, [el("div", { className: "row" }, [el("div", { className: "lbl" }, ["Vehicle model", el("small", {}, ["Switch the game's car type"])]), vehicleDropdown])]),
     el("div", { className: "card" }, [diag,
@@ -2774,7 +2774,7 @@
   searchIn.oninput = renderTable;
   const page2 = el("div", { className: "pg hide" }, [searchIn, scroller]);
 
-  const tabA = el("div", { className: "tab on", textContent: "Studio" }), tabB = el("div", { className: "tab", textContent: "Physics" }), tabC = el("div", { className: "tab", textContent: "Internals" }), tabD = el("div", { className: "tab", textContent: "Admin" });
+  const tabA = el("div", { className: "tab on", textContent: "Studio" }), tabB = el("div", { className: "tab", textContent: "Physics" }), tabC = el("div", { className: "tab", textContent: "Internals" }), tabD = el("div", { className: "tab", textContent: "Advanced" });
 
   // --- tab 3: Admin ---
   const adminInfo = el("div", { className: "status", textContent: "Car: not checked" });
@@ -2834,13 +2834,13 @@
   };
 
   // =========================================================================
-  // 12. FULLSCREEN CAD MODAL
+  // 12. FULLSCREEN CAR MODAL
   // =========================================================================
-  const cad = el("div", { className: "cad" });
+  const CAR = el("div", { className: "CAR" });
   const menuEl = el("div", { className: "ctx" });
   const helpEl = el("div", { className: "help" });
-  cad.appendChild(menuEl); cad.appendChild(helpEl);
-  cad.addEventListener("pointerdown", (e) => { if (UI.menuOpen() && !menuEl.contains(e.target)) UI.closeMenu(); }, true);
+  CAR.appendChild(menuEl); CAR.appendChild(helpEl);
+  CAR.addEventListener("pointerdown", (e) => { if (UI.menuOpen() && !menuEl.contains(e.target)) UI.closeMenu(); }, true);
   helpEl.onclick = () => UI.closeOverlays();
   const view = el("div", { className: "view" });
   const boxEl = el("div", { className: "boxsel" });
@@ -2879,8 +2879,8 @@
     setTimeout(() => { Studio.resize(); UI.refresh(); Studio.canvas.focus(); }, 60);
   };
 
-  cad.appendChild(el("div", { className: "cad-top" }, [
-    el("div", { className: "grp" }, [el("span", { className: "brand", textContent: "FAST ROADS CAD" }), modeSeg, undoBtn, redoBtn]),
+  CAR.appendChild(el("div", { className: "CAR-top" }, [
+    el("div", { className: "grp" }, [el("span", { className: "brand", textContent: "FAST ROADS CAR" }), modeSeg, undoBtn, redoBtn]),
     el("div", { className: "grp" }, [viewSeg, btn("[revert] Reload car", () => { if (!History.stack.length || confirm("Reload from the live car? Unsaved edits will be lost.")) Studio.loadCar(); }, "", "Re-import meshes from the game"),
       btn("[check] Sync to car", () => { Studio.objs.forEach((o) => { o.dirty.t = o.dirty.m = o.dirty.g = o.isEdited(); }); updateStatus(Sync.run() ? "Synced to live car" : "No live car to sync to"); }, "pri"),
       btn("[help]", () => UI.toggleHelp(), "", "Keyboard shortcuts (F1)"), btn("[x] Exit", exitStudio, "dan", "Esc")])
@@ -2936,7 +2936,7 @@
   const outEl = sidebar.firstChild;
   dragger(hsplit, (e) => { const r = sidebar.getBoundingClientRect(); outEl.style.height = clamp(e.clientY - r.top, 90, r.height - 160) + "px"; });
   const vsplit = el("div", { className: "vsplit", title: "Drag to resize the sidebar" });
-  cad.appendChild(el("div", { className: "cad-main" }, [view, vsplit, sidebar]));
+  CAR.appendChild(el("div", { className: "CAR-main" }, [view, vsplit, sidebar]));
   dragger(vsplit, (e) => { sidebar.style.width = clamp(innerWidth - e.clientX, 240, Math.round(innerWidth * 0.6)) + "px"; Studio.resize(); });
 
   // ---------- outliner ----------
@@ -3103,7 +3103,7 @@
   };
 
   // =========================================================================
-  // 13. UI facade used by the editor core
+  // 13. UI faCARe used by the editor core
   // =========================================================================
   const defaultHint = () => {
     if (S.tool === "paint") return "Paint: click / drag to colour · Esc = select tool";
@@ -3230,7 +3230,7 @@
   root.appendChild(mkSvg());
   root.appendChild(panel);
   mroot.appendChild(el("style", { textContent: css }));
-  mroot.appendChild(cad);
+  mroot.appendChild(CAR);
   document.body.appendChild(mkSvg());
   document.body.appendChild(host);
   document.body.appendChild(mhost);
