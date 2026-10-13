@@ -17180,7 +17180,30 @@ function __frBlockKind(vc) {
   }
   return k;
 }
-
+function __frEyesUpdate(def) {
+  const want = !!(def && def.jet);
+  if (!__frEyes.mesh) {
+    if (!want) return;
+    const c = document.createElement("canvas"); c.width = c.height = 256;
+    const g = c.getContext("2d");
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.font = '170px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif';
+    g.fillText("\u{1F440}", 128, 138);
+    const tex = new r.S().load(c.toDataURL("image/png"));   // the material below actually samples this texture
+    const geo = new r.I(1, 1); geo.rotateX(-Math.PI / 2);
+    const mat = new r.C({ map: tex, transparent: !0, depthWrite: !1, polygonOffset: !0, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const m = new r.B(geo, mat); m.renderOrder = 5; m.frustumCulled = !1; m.visible = !1;
+    qr.add(m); __frEyes.mesh = m;
+  }
+  const m = __frEyes.mesh;
+  m.visible = want;
+  if (!want) return;
+  const gh = Do.getHeight(z.position), alt = Math.max(0, z.position.y - gh), s = 5 * (1 + alt * 0.03);
+  m.position.set(z.position.x, gh + 0.06, z.position.z);
+  m.rotation.y = z.heading + Math.PI;
+  m.scale.set(s, 1, s);
+  m.material.opacity = 0.9 * Math.max(0.25, 1 - alt / 150);
+}
 function __frJetUpdate(vc, dt) {
   const d = vc.vehicleDef, J = __frJ, B = __frB;
   if (!d) return;
