@@ -17170,7 +17170,7 @@ function __frBlockKind(vc) {
   const d = vc.vehicleDef; let k = d && d.jet && __frJ.engineAttached ? "jet" : null;
   const ch = z.geo.children;
   for (let i = 0; i < ch.length; i++) {
-    if (ch[i].name !== "__mod_cad_parts__") continue;
+    if (ch[i].name !== "__mod_car_parts__") continue;
     const parts = ch[i].children;
     for (let j = 0; j < parts.length; j++) {
       const b = parts[j].userData && parts[j].userData.frBlock;
