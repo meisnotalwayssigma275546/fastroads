@@ -17333,35 +17333,96 @@ function __frCraft(parts) {
 }
 function __frBoatBody() {
   return __frCraft((ell, box) => {
-    ell(0.95, 0.4, 2.7, "hull_white", 0, 0.45, 1.2);
-    ell(0.6, 0.3, 1.3, "bow_white", 0, 0.52, 3.3);
-    box(1.88, 0.05, 4.6, "stripe_red", 0, 0.62, 1.1);
-    box(1.5, 0.08, 3.4, "deck_grey", 0, 0.78, 1.1);
-    ell(0.7, 0.4, 0.9, "cab_window", 0, 1.1, 1.4, 10, 6);
-    box(1.1, 0.3, 0.6, "seat_black", 0, 0.9, -0.3);
-    box(0.4, 0.6, 0.4, "motor_black", 0, 0.7, -1.7);
-    box(0.5, 0.1, 0.1, "hl1_headlight", 0.3, 0.85, 3.9);
-    box(0.5, 0.1, 0.1, "hl2_headlight", -0.3, 0.85, 3.9);
-    box(1.9, 0.8, 5.4, "sh_shadow", 0, 0.6, 1.1);
+    // --- Deep-V Hull Assembly ---
+    ell(1.0, 0.45, 2.9, "hull_white", 0, 0.45, 1.1);
+    ell(0.65, 0.32, 1.5, "bow_white", 0, 0.52, 3.2);
+    
+    // Lower Waterline Trim & Carbon Chined Rails
+    box(1.95, 0.06, 4.8, "stripe_red", 0, 0.62, 1.0);
+    box(1.85, 0.08, 4.4, "carbon_dark", 0, 0.52, 1.0);
+
+    // --- Main Deck & Transom Walkway ---
+    box(1.55, 0.08, 3.6, "deck_grey", 0, 0.78, 1.1);
+    box(1.4, 0.06, 0.8, "deck_dark", 0, 0.76, -1.2); // Extended aft swim platform
+
+    // --- Dual Console & Windshield Frame ---
+    ell(0.72, 0.42, 0.95, "cab_window", 0, 1.12, 1.4, 10, 6);
+    box(1.3, 0.1, 0.4, "carbon_dark", 0, 1.18, 1.6); // Modern sweeping windshield frame
+
+    // --- Cockpit Seating & Interior Trim ---
+    box(0.55, 0.28, 0.5, "seat_black", 0.38, 0.92, -0.2);  // Helm seat
+    box(0.55, 0.28, 0.5, "seat_black", -0.38, 0.92, -0.2); // Passenger seat
+    box(1.1, 0.25, 0.7, "seat_black", 0, 0.88, -0.9);     // Rear bench seat
+    box(0.7, 0.15, 0.9, "seat_black", 0, 0.85, 2.3);      // Bow lounge seating
+
+    // --- Dual Outboard Motors ---
+    for (const sx of [-0.42, 0.42]) {
+      box(0.32, 0.65, 0.4, "motor_black", sx, 0.72, -1.8);
+      box(0.12, 0.35, 0.1, "stripe_red", sx, 0.82, -1.82); // Performance motor accents
+      ell(0.18, 0.18, 0.4, "thruster_grey", sx, 0.48, -2.1, 10, 6); // Propeller housing
+    }
+
+    // --- Navigation & Accent Lighting ---
+    box(0.12, 0.08, 0.08, "hl1_headlight", 0.65, 0.85, 3.8);  // Starboard green light
+    box(0.12, 0.08, 0.08, "stripe_red", -0.65, 0.85, 3.8);   // Port red light
+    box(0.4, 0.08, 0.08, "hl1_headlight", 0, 0.92, 3.9);      // Center LED strip
+
+    // --- Dynamic Hull Shadow ---
+    box(2.0, 0.8, 5.6, "sh_shadow", 0, 0.58, 1.0);
   });
 }
 function __frJetskiBody() {
   return __frCraft((ell, box) => {
-    ell(0.8, 0.38, 3.4, "hull_white", 0, 0.5, 1.6);
-    ell(0.45, 0.3, 1.7, "nose_red", 0, 0.55, 4.5);
+    // --- Main Reinforced Hull ---
+    ell(0.85, 0.42, 3.6, "hull_white", 0, 0.48, 1.5);
+    ell(0.42, 0.28, 1.9, "nose_red", 0, 0.53, 4.7);
+    
+    // Lower Aerodynamic Skids & Splitters
+    box(1.75, 0.08, 4.2, "carbon_dark", 0, 0.25, 1.3);
+    box(0.5, 0.05, 2.5, "stripe_red", 0, 0.32, 2.8);
+
+    // --- Symmetrical Side Pods & Intake Channels ---
     for (const sx of [-1, 1]) {
-      ell(0.28, 0.25, 2.3, "pod_black", sx * 0.95, 0.55, 1.0);
-      box(0.06, 0.06, 3.0, "strip_jetglow", sx * 0.55, 0.82, 1.7);
-      box(0.05, 0.55, 0.6, "fin_red", sx * 0.95, 0.9, -1.7);
+      // Outer armored pontoons
+      ell(0.3, 0.28, 2.6, "pod_black", sx * 0.98, 0.52, 0.9);
+      // Glowing energy channels embedded in pods
+      box(0.08, 0.08, 3.2, "strip_jetglow", sx * 0.58, 0.8, 1.6);
+      // Swept-back tactical stabilizer fins
+      box(0.06, 0.65, 0.8, "fin_red", sx * 0.98, 0.95, -1.4);
+      // Side cooling vents
+      box(0.12, 0.2, 0.6, "vent_grey", sx * 1.05, 0.55, 0.2);
     }
-    ell(0.5, 0.35, 1.2, "cab_window", 0, 1.0, 2.5, 10, 6);
-    box(0.7, 0.25, 1.8, "seat_black", 0, 0.85, 0.2);
-    box(1.0, 0.07, 0.07, "bar_black", 0, 1.2, 1.7);
-    box(2.2, 0.05, 0.7, "wing_red", 0, 0.98, -1.7);
-    ell(0.35, 0.35, 0.8, "thruster_grey", 0, 0.6, -2.2, 10, 6);
-    box(0.4, 0.1, 0.1, "hl1_headlight", 0.25, 0.8, 5.5);
-    box(0.4, 0.1, 0.1, "hl2_headlight", -0.25, 0.8, 5.5);
-    box(2.0, 0.8, 7.2, "sh_shadow", 0, 0.6, 1.6);
+
+    // --- Cockpit & Canopy Section ---
+    ell(0.48, 0.32, 1.3, "cab_window", 0, 1.02, 2.3, 10, 6);
+    // Angular dashboard / windshield frame
+    box(0.85, 0.12, 0.5, "carbon_dark", 0, 1.12, 2.8);
+
+    // --- Rider Seating & Ergonomics ---
+    box(0.68, 0.28, 1.9, "seat_black", 0, 0.86, 0.1);
+    box(0.72, 0.08, 0.6, "stripe_red", 0, 0.73, 0.3); // Seat accent stitch
+    
+    // --- Handlebars & Control Deck ---
+    box(1.1, 0.06, 0.08, "bar_black", 0, 1.22, 1.6);
+    box(0.3, 0.15, 0.12, "dashboard_glow", 0, 1.15, 1.7); // Digital HUD panel
+
+    // --- Rear Wing & Aerofoil Assembly ---
+    box(2.4, 0.06, 0.8, "wing_red", 0, 1.02, -1.5);
+    box(0.15, 0.45, 0.15, "carbon_dark", 0, 1.25, -1.5); // Wing support strut
+
+    // --- Dual Thrusters & Exhaust System ---
+    for (const sx of [-0.35, 0.35]) {
+      ell(0.32, 0.32, 0.85, "thruster_grey", sx, 0.58, -2.3, 10, 6);
+      box(0.2, 0.2, 0.1, "strip_jetglow", sx, 0.58, -2.7); // Exhaust glow
+    }
+
+    // --- Lighting Array ---
+    box(0.35, 0.08, 0.12, "hl1_headlight", 0.32, 0.78, 5.7);
+    box(0.35, 0.08, 0.12, "hl2_headlight", -0.32, 0.78, 5.7);
+    box(0.15, 0.06, 0.06, "stripe_red", 0, 0.95, 5.7); // Center marker beacon
+
+    // --- Dynamic Ground / Water Shadow ---
+    box(2.1, 0.8, 7.6, "sh_shadow", 0, 0.55, 1.5);
   });
 }
 // ===== [/FAST ROADS: AIRCRAFT] =====
