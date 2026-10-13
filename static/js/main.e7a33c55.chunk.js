@@ -11977,8 +11977,26 @@
         (sr.sceneName = "Planet"),
         (sr.hasTrees = !1),
         (sr.hasGrass = !1);
-      const ar = { Hills: Nn, Planet: sr },
-        nr = ["Hills", "Planet"],
+      const __frOceanTopo = JSON.parse(JSON.stringify(Gi.topography));
+      for (const [k, off] of [["normal", 34], ["hard", 50], ["easy", 55], ["wide", 55]])
+        __frOceanTopo[k].heightmap.heightOffset = off;   // lower land => islands, lakes and open water; roads bridge the gaps
+      class __frOcean extends Mn {
+        constructor(e) { super(e); this.config = __frOcean.config; }
+        initialise(e, t, i) {
+          this.seed = e;
+          let s = t.topography;
+          (this.topoIndex = this.topoList.indexOf(s)),
+            delete this.heightmap,
+            (this.heightmap = new pt(e, __frOcean.config.topography[s].heightmap)),
+            ae(__frOcean.config.topography[s].smoothWindow),
+            ke(__frOcean.config.topography[s].roadWidth),
+            Ri || this.initSea(),
+            i();
+        }
+      }
+      (__frOcean.config = { ...Gi, topography: __frOceanTopo }), (__frOcean.sceneName = "Ocean");
+      const ar = { Hills: Nn, Planet: sr, Ocean: __frOcean },
+        nr = ["Hills", "Planet", "Ocean"],
         difficulties = ["easy", "normal", "hard", "wide", "straight"],
         rr = [0.5, 0.75, 1, 1.5],
         or = {
@@ -12610,6 +12628,42 @@
               FirstPerson: { pitch: { near: 0.04, far: 0.04 }, yOffset: { near: 1.35, far: 1.35 }, posOffset: [0, 0, 1.7], range: { near: 0.75, far: 0.75 }, farSpeed: 120, smoothFactor: 0.3, hideVehicle: !0 },
             },
           },
+          Boat: {
+            enabled: !0, name: "Boat", skins: [], water: !0, waterOnly: !0,
+            bodyObj: { default: null }, wheelObj: { default: null },
+            buildBody: () => __frBoatBody(), buildWheel: () => new r.G(),
+            icon: ur, audio: { roll: cr, engine: pr },
+            wheels: { tyreWidth: 0, width: 1.2, length: 2.4, radius: 0.3, circumference: 1.885, travel: 0.1 },
+            metrics: {
+              shadowMapSize: 6, steerSpeed: 1.6, accel: 9, reverse: 5, jerk: 30, brake: 8, mass: 1200,
+              steerAccel: 10, maxSteer: 0.5, axleHeight: 0.3, dampening: 0.08, rockFactor: 6, drag: 0.0015,
+              topSpeed: 35.76, rollResistance: 0.05, steerInterval: 1.2, slipBase: 0.5, slipMod: 0.25, aeroFactor: 0.2,
+              headlightPos: { x: 0.4, y: 0.8, z: 4.2 },
+            },
+            cameras: {
+              Chase: { pitch: { near: 0.3, far: 0.2 }, yOffset: { near: 1.2, far: 1.8 }, posOffset: [0, 0, 1.2], range: { near: 7, far: 9 }, farSpeed: 36, smoothFactor: 1.5 },
+              ChaseFar: { pitch: { near: 0.25, far: 0.15 }, yOffset: { near: 1.6, far: 2.8 }, posOffset: [0, 0, 1.2], range: { near: 11, far: 15 }, farSpeed: 36, smoothFactor: 1.25 },
+              FirstPerson: { pitch: { near: 0.05, far: 0.05 }, yOffset: { near: 1.3, far: 1.3 }, posOffset: [0, 0, 2.2], range: { near: 0.75, far: 0.75 }, farSpeed: 36, smoothFactor: 0.3, hideVehicle: !0 },
+            },
+          },
+          Jetski: {
+            enabled: !0, name: "Jetski", skins: [], water: !0, waterOnly: !0,
+            bodyObj: { default: null }, wheelObj: { default: null },
+            buildBody: () => __frJetskiBody(), buildWheel: () => new r.G(),
+            icon: ur, audio: { roll: cr, engine: pr },
+            wheels: { tyreWidth: 0, width: 1.5, length: 3.4, radius: 0.3, circumference: 1.885, travel: 0.1 },
+            metrics: {
+              shadowMapSize: 8, steerSpeed: 2.2, accel: 22, reverse: 8, jerk: 60, brake: 20, mass: 900,
+              steerAccel: 20, maxSteer: 0.55, axleHeight: 0.3, dampening: 0.06, rockFactor: 5, drag: 0.0004,
+              topSpeed: 110, rollResistance: 0.04, steerInterval: 1, slipBase: 0.4, slipMod: 0.2, aeroFactor: 0.6,
+              headlightPos: { x: 0.45, y: 0.8, z: 5.6 },
+            },
+            cameras: {
+              Chase: { pitch: { near: 0.28, far: 0.18 }, yOffset: { near: 1.4, far: 2.2 }, posOffset: [0, 0, 1.5], range: { near: 9, far: 13 }, farSpeed: 100, smoothFactor: 1.4 },
+              ChaseFar: { pitch: { near: 0.22, far: 0.12 }, yOffset: { near: 2.2, far: 3.6 }, posOffset: [0, 0, 1.5], range: { near: 15, far: 21 }, farSpeed: 100, smoothFactor: 1.2 },
+              FirstPerson: { pitch: { near: 0.05, far: 0.05 }, yOffset: { near: 1.5, far: 1.5 }, posOffset: [0, 0, 2.6], range: { near: 0.75, far: 0.75 }, farSpeed: 100, smoothFactor: 0.3, hideVehicle: !0 },
+            },
+          },
           Rover: {
             enabled: !1,
             name: "Rover",
@@ -12652,6 +12706,7 @@
             cameras: xr,
           },
         };
+      const __frVehOk = (n) => !(vehicleMap[n] && vehicleMap[n].waterOnly) || dr.value.sceneName === "Ocean";
       const vehicleMap = {
           Roadster: vehicles.Roadster,
           Bike: vehicles.Bike,
@@ -12660,6 +12715,8 @@
           Supercar: vehicles.Supercar,
           Aircraft: vehicles.Aircraft,
           Jet: vehicles.Jet,
+          Boat: vehicles.Boat,
+          Jetski: vehicles.Jetski,
         },
         br = 1,
         fr = 2;
@@ -17077,16 +17134,21 @@ function __frLoad(loader, mod, def, key, cb) {
   loader.load(mod.default, cb);
 }
 // ===== [FAST ROADS: JET] =====
-const __frJ = { fx: [], halos: [], blades: [], on: false, lvl: 0, haloMat: null, engineAttached: false };
+const __frJ = { fx: [], halos: [], blades: [], lvl: 0, haloMat: null, engineAttached: false, propAngle: 0 };
+// Boost state. mult is recomputed from scratch every frame (1 / 2.5 / 4) and applied once to the base drive force.
+const __frB = { kind: null, active: false, mult: 1, mph: 0 };
+const __frEyes = { mesh: null };
+function __frReset() { __frB.kind = null; __frB.active = false; __frB.mult = 1; __frJ.lvl = 0; }
 function __frJetSetup(root, def) {
-  const J = __frJ; J.fx = []; J.halos = []; J.blades = []; J.on = false; J.lvl = 0; J.engineAttached = false;
+  const J = __frJ; J.fx = []; J.halos = []; J.blades = []; J.lvl = 0; J.engineAttached = false; J.propAngle = 0;
+  __frReset();
   if (!root) return;
   if (!J.haloMat) J.haloMat = new r.C({ color: 0xff8a2a, transparent: !0, opacity: 0, depthWrite: !1, blending: 2, fog: !1 });
   const add = [];
   root.traverse((m) => {
     if (!m.isMesh) return;
     const p = m.name.split("_"), k = p[1];
-    if (k === "flame" || k === "flamecore") {
+    if (def && def.jet && (k === "flame" || k === "flamecore")) {
       J.engineAttached = true;
       const zc = p[0].slice(-1) === "R" ? 0.32 : -0.32;
       if (!m.userData.__frFlamePivoted) {
@@ -17098,29 +17160,81 @@ function __frJetSetup(root, def) {
       J.fx.push(m);
       if (k === "flame") { const h = new r.B(new r.Q(1, 10, 8), J.haloMat); h.position.set(-3.7, 0.8, zc); add.push(h); }
     }
-    if (k === "propa" || k === "propb" || /noseblade|propeller/i.test(m.name)) J.blades.push(m);
+    // built-in nose propeller of aircraft models: exact mesh names only (propa_* / propb_*)
+    if (def && def.aircraft && (k === "propa" || k === "propb")) J.blades.push(m);
   });
   for (const h of add) { root.add(h); J.halos.push(h); }
-  J.on = !!(def && def.jet) || J.engineAttached;
+}
+// 'rocket' | 'jet' | null. Blocks attached by the editor carry userData.frBlock; the Jet vehicle has built-in engines.
+function __frBlockKind(vc) {
+  const d = vc.vehicleDef; let k = d && d.jet && __frJ.engineAttached ? "jet" : null;
+  const ch = z.geo.children;
+  for (let i = 0; i < ch.length; i++) {
+    if (ch[i].name !== "__mod_cad_parts__") continue;
+    const parts = ch[i].children;
+    for (let j = 0; j < parts.length; j++) {
+      const b = parts[j].userData && parts[j].userData.frBlock;
+      if (b === "rocket") return "rocket";
+      if (b === "jet") k = "jet";
+    }
+  }
+  return k;
+}
+function __frEyesUpdate(def) {
+  const want = !!(def && def.jet);
+  if (!__frEyes.mesh) {
+    if (!want) return;
+    const c = document.createElement("canvas"); c.width = c.height = 256;
+    const g = c.getContext("2d");
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.font = '170px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif';
+    g.fillText("\u{1F440}", 128, 138);
+    const tex = new r.S().load(c.toDataURL("image/png"));   // the material below actually samples this texture
+    const geo = new r.I(1, 1); geo.rotateX(-Math.PI / 2);
+    const mat = new r.C({ map: tex, transparent: !0, depthWrite: !1, polygonOffset: !0, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const m = new r.B(geo, mat); m.renderOrder = 5; m.frustumCulled = !1; m.visible = !1;
+    qr.add(m); __frEyes.mesh = m;
+  }
+  const m = __frEyes.mesh;
+  m.visible = want;
+  if (!want) return;
+  const gh = Do.getHeight(z.position), alt = Math.max(0, z.position.y - gh), s = 5 * (1 + alt * 0.03);
+  m.position.set(z.position.x, gh + 0.06, z.position.z);
+  m.rotation.y = z.heading + Math.PI;
+  m.scale.set(s, 1, s);
+  m.material.opacity = 0.9 * Math.max(0.25, 1 - alt / 150);
 }
 function __frJetUpdate(vc, dt) {
-  const d = vc.vehicleDef, J = __frJ;
-  if (!d || (!d.jet && !J.engineAttached)) { window.__FR_JET = null; return; }
-  J.on = true;
-  if (J.on) z.drive = Math.max(z.drive, z.metrics.accel * 3.5);
-  const mph = Math.max(0, z.speed || 0) * 2.23694;
-  const fireVisible = J.on && mph >= 100;
+  const d = vc.vehicleDef, J = __frJ, B = __frB;
+  if (!d) return;
+  // ---- boost (jet 2.5x / rocket 4x at >= 100 mph; mph from the game's speed in m/s) ----
+  const mph = Math.max(0, z.speed || 0) * 2.23694, kind = __frBlockKind(vc);
+  B.kind = kind; B.mph = mph;
+  B.active = !!kind && mph >= 100;
+  B.mult = B.active ? (kind === "rocket" ? 4 : 2.5) : 1;
+  // ---- exhaust flames follow the same state ----
   const night = z.headlights ? 1 : 0;
-  const target = fireVisible ? 1 : 0;
-  J.lvl += (target - J.lvl) * Math.min(1, 8 * dt);
-  const fl = J.lvl * (0.85 + Math.random() * 0.3), vis = fireVisible && J.lvl > 0.03;
+  J.lvl += ((B.active ? 1 : 0) - J.lvl) * Math.min(1, 8 * dt);
+  const fl = J.lvl * (0.85 + Math.random() * 0.3), vis = B.active && J.lvl > 0.03;
   for (const f of J.fx) { f.visible = vis; f.scale.set(0.05 + fl * 1.2, 0.5 + 0.5 * J.lvl, 0.5 + 0.5 * J.lvl); }
   if (J.haloMat) J.haloMat.opacity = J.lvl * (night ? 0.75 : 0.18) * (0.85 + Math.random() * 0.3);
   const hs = 0.8 + 1.3 * J.lvl * (1 + night * 1.2);
   for (const h of J.halos) { h.visible = vis; h.scale.set(hs, hs, hs); }
-  for (const b of J.blades) b.rotation.z += Math.max(0.5, Math.abs(z.speed || 0) * 0.5) * dt * (J.on ? 12 : 1);
-  Cl.jetglow.emissiveIntensity = 0.2 + J.lvl * (2 + 3 * night);
-  window.__FR_JET = { on: J.on, lvl: J.lvl, mph, fireVisible };
+  if (J.fx.length) Cl.jetglow.emissiveIntensity = 0.2 + J.lvl * (2 + 3 * night);
+  // ---- built-in nose propeller: same rate as the wheels (distance / circumference * 2pi), dt based ----
+  if (J.blades.length) {
+    const circ = d.wheels.circumference || 1.885, sp = Math.max(0, z.speed || 0);
+    J.propAngle = (J.propAngle + (sp * dt / circ) * 6.28 + (vc.inputs.accel > 0 ? 18 * dt : 4 * dt)) % (Math.PI * 2);
+    for (const b of J.blades) b.rotation.z = J.propAngle;
+  }
+  __frEyesUpdate(d);
+  window.__FR_BOOST = B;
+  window.__FR_JET = { on: !!kind, lvl: J.lvl, mph, fireVisible: B.active };
+}
+// water vehicles: the sea surface (y = 0) is the ground
+function __frWater(g) {
+  if (g.h < 0.02) { g.h = 0; g.n = [0, 1, 0]; g.f = 0.85; g.r = !1; }
+  else g.f = Math.min(g.f, 0.4);
 }
 // ===== [/FAST ROADS: JET] =====
 // per-frame flight state (called at the top of updateWheelMotion)
@@ -17196,13 +17310,59 @@ function __frAircraftBody() {
     box(0.05, 0.45, 0.05, "leg_grey", sx * 0.5, 0.52, zz);
     box(0.36, 0.04, 0.04, "strut_grey", sx * 0.3, 0.7, zz);
   }
-  box(0.07, 1.3, 0.03, "propa_black", 0, 0.8, 2.92);
-  box(1.3, 0.07, 0.03, "propb_black", 0, 0.8, 2.92);
+  // spinner blades: geometry centred on the hub so rotation.z spins them about the nose axis
+  for (const [w, h, nm] of [[0.07, 1.3, "propa_black"], [1.3, 0.07, "propb_black"]]) {
+    const m = box(w, h, 0.03, nm, 0, 0.8, 2.92);
+    m.geometry.translate(0, -0.8, -2.92); m.position.set(0, 0.8, 2.92);
+  }
   box(0.12, 0.08, 0.08, "hl1_headlight", 0.22, 0.72, 2.45);
   box(0.12, 0.08, 0.08, "hl2_headlight", -0.22, 0.72, 2.45);
   box(0.9, 0.7, 4.8, "sh_shadow", 0, 0.8, 0.3);
   box(4.4, 0.08, 0.8, "sh2_shadow", 0, 0.78, 0.25);
   return root;
+}
+// water craft (+Z forward, rear axle at z=0, same conventions as the aircraft body)
+function __frCraft(parts) {
+  const root = new r.G(), g = new r.G();
+  g.rotation.y = Math.PI / 2; root.add(g);
+  const put = (geo, name, x, y, zz) => { geo.translate(x, y, zz); const m = new r.B(geo, Cl.default); m.name = name; g.add(m); return m; };
+  const ell = (rx, ry, rz, name, x, y, zz, w, h) => { const geo = new r.Q(1, w || 12, h || 8); geo.scale(rx, ry, rz); return put(geo, name, x, y, zz); };
+  const box = (w, h, d, name, x, y, zz) => put(new r.e(w, h, d), name, x, y, zz);
+  parts(ell, box);
+  return root;
+}
+function __frBoatBody() {
+  return __frCraft((ell, box) => {
+    ell(0.95, 0.4, 2.7, "hull_white", 0, 0.45, 1.2);
+    ell(0.6, 0.3, 1.3, "bow_white", 0, 0.52, 3.3);
+    box(1.88, 0.05, 4.6, "stripe_red", 0, 0.62, 1.1);
+    box(1.5, 0.08, 3.4, "deck_grey", 0, 0.78, 1.1);
+    ell(0.7, 0.4, 0.9, "cab_window", 0, 1.1, 1.4, 10, 6);
+    box(1.1, 0.3, 0.6, "seat_black", 0, 0.9, -0.3);
+    box(0.4, 0.6, 0.4, "motor_black", 0, 0.7, -1.7);
+    box(0.5, 0.1, 0.1, "hl1_headlight", 0.3, 0.85, 3.9);
+    box(0.5, 0.1, 0.1, "hl2_headlight", -0.3, 0.85, 3.9);
+    box(1.9, 0.8, 5.4, "sh_shadow", 0, 0.6, 1.1);
+  });
+}
+function __frJetskiBody() {
+  return __frCraft((ell, box) => {
+    ell(0.8, 0.38, 3.4, "hull_white", 0, 0.5, 1.6);
+    ell(0.45, 0.3, 1.7, "nose_red", 0, 0.55, 4.5);
+    for (const sx of [-1, 1]) {
+      ell(0.28, 0.25, 2.3, "pod_black", sx * 0.95, 0.55, 1.0);
+      box(0.06, 0.06, 3.0, "strip_jetglow", sx * 0.55, 0.82, 1.7);
+      box(0.05, 0.55, 0.6, "fin_red", sx * 0.95, 0.9, -1.7);
+    }
+    ell(0.5, 0.35, 1.2, "cab_window", 0, 1.0, 2.5, 10, 6);
+    box(0.7, 0.25, 1.8, "seat_black", 0, 0.85, 0.2);
+    box(1.0, 0.07, 0.07, "bar_black", 0, 1.2, 1.7);
+    box(2.2, 0.05, 0.7, "wing_red", 0, 0.98, -1.7);
+    ell(0.35, 0.35, 0.8, "thruster_grey", 0, 0.6, -2.2, 10, 6);
+    box(0.4, 0.1, 0.1, "hl1_headlight", 0.25, 0.8, 5.5);
+    box(0.4, 0.1, 0.1, "hl2_headlight", -0.25, 0.8, 5.5);
+    box(2.0, 0.8, 7.2, "sh_shadow", 0, 0.6, 1.6);
+  });
 }
 // ===== [/FAST ROADS: AIRCRAFT] =====
 
@@ -17354,7 +17514,8 @@ const Il = [2.23694, 3.59999],
             this.initialise();
         }
         initialise() {
-          (this.autoDriver = new yl(() => {
+          __frVehOk(jr.value.type) || jr.set("type", "Roadster"),
+            (this.autoDriver = new yl(() => {
             this.resetToNode(Ke.vehicleNode);
           })),
             this.initialisePosition(),
@@ -17365,13 +17526,13 @@ const Il = [2.23694, 3.59999],
             this.changeInput(jr.value.input, !0),
             w.addListener("Units", this.onUnitsChangedBound),
             this.onUnitsChanged(w.Units),
-            this.initVehicle(vehicleMap[jr.value.type]),
             (this.dom.speed = document.getElementById("ui-speed-val")),
             (this.dom.dist = document.getElementById("ui-dist-val")),
             (this.dom.mouseMarker = document.getElementById(
               "ui-mouse-bar-marker"
             )),
             (this.dom.mousePrompt = document.getElementById("ui-mouse-prompt")),
+            this.initVehicle(vehicleMap[jr.value.type]),
             z.addListener(j, this.onHeadlightsChanged.bind(this)),
             this.onHeadlightsChanged(),
             (Sr.dist =
@@ -17456,6 +17617,7 @@ const Il = [2.23694, 3.59999],
           this.setLights(z.headlights);
         }
         changeVehicle(e) {
+          if (!__frVehOk(e)) return void jr.set("type", "Roadster");
           this.initVehicle(vehicleMap[e]), Jr.sendUpdate("vehicleChange", e);
         }
         changeMode(e) {
@@ -17696,7 +17858,7 @@ const Il = [2.23694, 3.59999],
               (this.holdHandbrake = null == Rr.value),
               (this.update = this.updateLive),
               Yo.resume(),
-              void (this.dom.mousePrompt.style.display = "none")
+              void (this.dom.mousePrompt && (this.dom.mousePrompt.style.display = "none"))
             );
           (this.inputs.accel = 0),
             this.updateWheelMotion(e),
@@ -17774,8 +17936,12 @@ const Il = [2.23694, 3.59999],
           (this.speedFactor = Il[e]), (this.distFactor = Dl[e]);
         }
         updateUI() {
-          (this.dom.speed.innerHTML = (Sr.speed * this.speedFactor).toFixed(1)),
-            (this.dom.dist.innerHTML = (
+          const d = this.dom;
+          d.speed || (d.speed = document.getElementById("ui-speed-val")),
+            d.dist || (d.dist = document.getElementById("ui-dist-val"));
+          if (!d.speed || !d.dist) return;
+          (d.speed.innerHTML = (Sr.speed * this.speedFactor).toFixed(1)),
+            (d.dist.innerHTML = (
               Math.floor(Sr.dist * this.distFactor * 10) / 10
             ).toFixed(1));
         }
@@ -17869,7 +18035,7 @@ const Il = [2.23694, 3.59999],
                     : (t.acc.z = Math.min(zl.maxDecel, z.brakeForce)),
                   t.speed < 0.1 && (z.braking = !1))
                 : t.hasDrive &&
-                  ((t.acc.z = z.drive * this.driveModeFactor),
+                  ((t.acc.z = z.drive * this.driveModeFactor * __frB.mult),
                   z.bike
                     ? t.front
                       ? (t.acc.z *= z.frSteerDifferential)
@@ -18267,6 +18433,7 @@ const Il = [2.23694, 3.59999],
               (t.groundState.insideWall = t.insideWall),
               (t.groundState.debug = 1 == t.i),
               (zl.ground = Do.testGround(this.tVec, t.groundState)),
+              this.vehicleDef.water && __frWater(zl.ground),
               t.groundNorm.set(zl.ground.n[0], zl.ground.n[1], zl.ground.n[2]),
               (t.groundHeight = zl.ground.h),
               (t.friction = zl.ground.f),
@@ -18664,6 +18831,7 @@ const Il = [2.23694, 3.59999],
             (this.inputs.handbrake = 0),
             (this.inputs.stiffSteer = 0),
             (this.hasBoost = !1);
+          __frReset();
           let i = 0;
           for (let s of this.wheels.children)
             (s.shockPos = 0.5),
@@ -18714,7 +18882,7 @@ const Il = [2.23694, 3.59999],
             this.motionDir.set(0, 0, 1),
             this.steerOrientation.copy(this.orientation),
             this.autoDriver.reset(),
-            this.useMouse && (this.dom.mousePrompt.style.display = "block");
+            this.useMouse && this.dom.mousePrompt && (this.dom.mousePrompt.style.display = "block");
         }
         getDriveState(e) {
           this.inputs.accel > 0
@@ -19029,6 +19197,7 @@ const Il = [2.23694, 3.59999],
                 Jr.recordSeed(dr.value.seed), this.regenerateAll();
               }),
               dr.addListener("sceneName", () => {
+                __frVehOk(jr.value.type) || jr.set("type", "Roadster");
                 this.regenerateAll();
               }),
               dr.addListener("topography", () => {
@@ -20437,11 +20606,11 @@ const Il = [2.23694, 3.59999],
                           children: "scene",
                         }),
                         Object(Ul.jsx)(Ud, {
-                          options: ["HILLS", "OFF-WORLD"],
-                          bgs: [Ld, Rd],
+                          options: ["HILLS", "OFF-WORLD", "OCEAN"],
+                          bgs: [Ld, Rd, Ld],
                           selectedIndex: nr.indexOf(x),
                           onSelectIndex: (e) => {
-                            e < 2 && v(nr[e]);
+                            e < 3 && v(nr[e]);
                           },
                         }),
                         Object(Ul.jsx)("div", {
@@ -20803,8 +20972,16 @@ const Il = [2.23694, 3.59999],
           });
         },
         _d = () => {
-          const [e, t] = Object(s.useState)(jr.value.type);
+          const [e, t] = Object(s.useState)(jr.value.type),
+            [sc, setSc] = Object(s.useState)(dr.value.sceneName);
           return (
+            Object(s.useEffect)(
+              () => (
+                dr.addListener("sceneName", setSc),
+                () => dr.removeListener("sceneName", setSc)
+              ),
+              []
+            ),
             Object(s.useEffect)(
               () => (
                 jr.addListener("type", t),
@@ -20817,7 +20994,7 @@ const Il = [2.23694, 3.59999],
             Object(Ul.jsxs)(nc, {
               icon: pd,
               children: [
-                Object.keys(vehicleMap).map((t) =>
+                Object.keys(vehicleMap).filter((n) => !vehicleMap[n].waterOnly || sc === "Ocean").map((t) =>
                   Object(Ul.jsx)(
                     rc,
                     {
@@ -22676,7 +22853,7 @@ const Il = [2.23694, 3.59999],
       window.qr = qr; window.gameScene = qr;
       window.Be = Be;
       window.gameInput = input;
-      window.__FR_GT = { Group: r.G, Object3D: r.G, Mesh: r.B, BufferGeometry: r.g, BufferAttribute: r.o, MeshStandardMaterial: r.F, Color: r.i, Vector3: r.U, Sphere: r.Q, Basic: r.C };
+      window.__FR_GT = { TextureLoader: r.S, Group: r.G, Object3D: r.G, Mesh: r.B, BufferGeometry: r.g, BufferAttribute: r.o, MeshStandardMaterial: r.F, Color: r.i, Vector3: r.U, Sphere: r.Q, Basic: r.C };
       // ====================================================
 
       h.a.render(
