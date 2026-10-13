@@ -17181,15 +17181,6 @@ function __frBlockKind(vc) {
   return k;
 }
 
-  const m = __frEyes.mesh;
-  m.visible = want;
-  if (!want) return;
-  const gh = Do.getHeight(z.position), alt = Math.max(0, z.position.y - gh), s = 5 * (1 + alt * 0.03);
-  m.position.set(z.position.x, gh + 0.06, z.position.z);
-  m.rotation.y = z.heading + Math.PI;
-  m.scale.set(s, 1, s);
-  m.material.opacity = 0.9 * Math.max(0.25, 1 - alt / 150);
-}
 function __frJetUpdate(vc, dt) {
   const d = vc.vehicleDef, J = __frJ, B = __frB;
   if (!d) return;
